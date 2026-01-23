@@ -23,10 +23,10 @@ async def search(q: str = Query(..., min_length=1)):
     """
     Search for both players and teams by name.
     Returns matching players and teams in one response.
-    
+
     Args:
         q: The search term (at least 1 character)
-        
+
     Returns:
         SearchResults: Lists of matching players and teams
     """

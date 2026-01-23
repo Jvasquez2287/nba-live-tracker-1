@@ -20,13 +20,13 @@ async def search_entities(query: str) -> SearchResults:
     """
     Search for both players and teams by name.
     Returns matching players and teams in one response.
-    
+
     Args:
         query: The search term (player name or team name)
-        
+
     Returns:
         SearchResults: Lists of matching players and teams
-        
+
     Raises:
         HTTPException: If API error occurs
     """
@@ -44,7 +44,7 @@ async def search_entities(query: str) -> SearchResults:
                 asyncio.to_thread(
                     lambda: playerindex.PlayerIndex(historical_nullable=HistoricalNullable.all_time, **api_kwargs)
                 ),
-                timeout=15.0
+                timeout=15.0,
             )
             player_index_df = player_index_data.get_data_frames()[0]
 
@@ -52,7 +52,9 @@ async def search_entities(query: str) -> SearchResults:
             filtered_players = player_index_df[
                 player_index_df["PLAYER_FIRST_NAME"].str.lower().str.contains(search_lower, na=False)
                 | player_index_df["PLAYER_LAST_NAME"].str.lower().str.contains(search_lower, na=False)
-            ].head(10)  # Limit to 10 players
+            ].head(
+                10
+            )  # Limit to 10 players
 
             # Convert to native Python types immediately
             players_data = filtered_players.to_dict(orient="records")
@@ -66,7 +68,9 @@ async def search_entities(query: str) -> SearchResults:
                         id=int(row["PERSON_ID"]),
                         name=f"{row['PLAYER_FIRST_NAME']} {row['PLAYER_LAST_NAME']}",
                         team_id=int(row["TEAM_ID"]) if pd.notna(row.get("TEAM_ID")) else None,
-                        team_abbreviation=row.get("TEAM_ABBREVIATION") if pd.notna(row.get("TEAM_ABBREVIATION")) else None,
+                        team_abbreviation=(
+                            row.get("TEAM_ABBREVIATION") if pd.notna(row.get("TEAM_ABBREVIATION")) else None
+                        ),
                     )
                 )
         except Exception as e:

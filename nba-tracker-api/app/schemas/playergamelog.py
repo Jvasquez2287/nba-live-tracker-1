@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 class PlayerGameLogEntry(BaseModel):
     """A single game log entry for a player."""
-    
+
     game_id: str = Field(..., description="NBA game ID")
     game_date: str = Field(..., description="Game date in YYYY-MM-DD format")
     matchup: str = Field(..., description="Matchup string (e.g., 'LAL vs. GSW')")
@@ -30,8 +30,7 @@ class PlayerGameLogEntry(BaseModel):
 
 class PlayerGameLogResponse(BaseModel):
     """Player game log response with all games."""
-    
+
     player_id: int = Field(..., description="NBA player ID")
     season: str = Field(..., description="Season (e.g., '2024-25')")
     games: List[PlayerGameLogEntry] = Field(..., description="List of game log entries")
-

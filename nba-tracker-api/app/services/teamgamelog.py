@@ -31,28 +31,38 @@ async def get_team_game_log(team_id: str, season: str = "2024-25") -> TeamGameLo
                         team_id_nullable=team_id_int,
                         season_nullable=season,
                         season_type_nullable=SeasonTypeAllStar.regular,
-                        **api_kwargs
+                        **api_kwargs,
                     ).get_data_frames()[0]
                 ),
-                timeout=30.0
+                timeout=30.0,
             )
-            
+
             if not game_finder_data.empty:
                 # Convert LeagueGameFinder DataFrame to game log format
-                logger.info(f"Found {len(game_finder_data)} games via LeagueGameFinder for team {team_id}, season {season}")
-                
+                logger.info(
+                    f"Found {len(game_finder_data)} games via LeagueGameFinder for team {team_id}, season {season}"
+                )
+
                 # Convert to native Python types immediately
                 games_data = game_finder_data.to_dict(orient="records")
                 del game_finder_data  # Delete DataFrame after conversion
-                
+
                 games = []
                 for row in games_data:
                     try:
                         game_entry = TeamGameLogEntry(
                             game_id=str(row.get("GAME_ID", "")),
-                            game_date=pd.to_datetime(row.get("GAME_DATE", "")).strftime("%Y-%m-%d") if pd.notna(row.get("GAME_DATE")) else "",
+                            game_date=(
+                                pd.to_datetime(row.get("GAME_DATE", "")).strftime("%Y-%m-%d")
+                                if pd.notna(row.get("GAME_DATE"))
+                                else ""
+                            ),
                             matchup=row.get("MATCHUP", ""),
-                            win_loss=str(row.get("WL", "")) if pd.notna(row.get("WL")) and str(row.get("WL", "")).strip() else None,
+                            win_loss=(
+                                str(row.get("WL", ""))
+                                if pd.notna(row.get("WL")) and str(row.get("WL", "")).strip()
+                                else None
+                            ),
                             points=int(row.get("PTS", 0)) if pd.notna(row.get("PTS")) else 0,
                             rebounds=int(row.get("REB", 0)) if pd.notna(row.get("REB")) else 0,
                             assists=int(row.get("AST", 0)) if pd.notna(row.get("AST")) else 0,
@@ -73,20 +83,26 @@ async def get_team_game_log(team_id: str, season: str = "2024-25") -> TeamGameLo
                     except Exception as e:
                         logger.warning(f"Error parsing LeagueGameFinder row: {e}")
                         continue
-                
+
                 games.sort(key=lambda x: x.game_date, reverse=True)
-                logger.info(f"Successfully parsed {len(games)} games from LeagueGameFinder for team {team_id}, season {season}")
+                logger.info(
+                    f"Successfully parsed {len(games)} games from LeagueGameFinder for team {team_id}, season {season}"
+                )
                 return TeamGameLogResponse(team_id=team_id_int, season=season, games=games)
         except Exception as e:
-            logger.warning(f"LeagueGameFinder failed for team {team_id}, season {season}: {e}. Falling back to TeamGameLog.")
-        
+            logger.warning(
+                f"LeagueGameFinder failed for team {team_id}, season {season}: {e}. Falling back to TeamGameLog."
+            )
+
         # Fallback: Use TeamGameLog (only completed games)
         await rate_limit()
         game_log_data = await asyncio.wait_for(
             asyncio.to_thread(
-                lambda: TeamGameLog(team_id=team_id, season=season, season_type_all_star=SeasonTypeAllStar.regular, **api_kwargs).get_dict()
+                lambda: TeamGameLog(
+                    team_id=team_id, season=season, season_type_all_star=SeasonTypeAllStar.regular, **api_kwargs
+                ).get_dict()
             ),
-            timeout=30.0
+            timeout=30.0,
         )
 
         if not game_log_data.get("resultSets") or len(game_log_data["resultSets"]) == 0:
@@ -95,11 +111,11 @@ async def get_team_game_log(team_id: str, season: str = "2024-25") -> TeamGameLo
 
         game_log = game_log_data["resultSets"][0].get("rowSet", [])
         game_headers = game_log_data["resultSets"][0].get("headers", [])
-        
+
         if not game_log:
             logger.warning(f"Empty game log rowSet for team {team_id}, season {season}")
             return TeamGameLogResponse(team_id=team_id_int, season=season, games=[])
-        
+
         logger.info(f"Found {len(game_log)} games in game log for team {team_id}, season {season}")
 
         games = []
@@ -107,6 +123,7 @@ async def get_team_game_log(team_id: str, season: str = "2024-25") -> TeamGameLo
 
         for row in game_log:
             try:
+
                 def get_value(key: str, default=None, type_func=None):
                     idx = header_map.get(key)
                     if idx is None or idx >= len(row):
@@ -159,7 +176,7 @@ async def get_team_game_log(team_id: str, season: str = "2024-25") -> TeamGameLo
                 continue
 
         games.sort(key=lambda x: x.game_date, reverse=True)
-        
+
         logger.info(f"Successfully parsed {len(games)} games for team {team_id}, season {season}")
 
         return TeamGameLogResponse(team_id=team_id_int, season=season, games=games)
@@ -170,29 +187,26 @@ async def get_team_game_log(team_id: str, season: str = "2024-25") -> TeamGameLo
         logger.error(f"Timeout fetching game log for team {team_id}, season {season}")
         raise HTTPException(
             status_code=503,
-            detail=f"Timeout fetching game log. The NBA API may be slow or unavailable. Please try again later."
+            detail=f"Timeout fetching game log. The NBA API may be slow or unavailable. Please try again later.",
         )
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Error fetching game log for team {team_id}, season {season}: {e}", exc_info=True)
-        
+
         # Check if this might be a future season that doesn't exist yet
         from datetime import datetime
+
         try:
             current_year = datetime.now().year
-            season_start_year = int(season.split('-')[0])
+            season_start_year = int(season.split("-")[0])
             if season_start_year > current_year or (season_start_year == current_year and datetime.now().month < 10):
                 logger.info(f"Season {season} may not exist yet in NBA API")
                 return TeamGameLogResponse(team_id=int(team_id), season=season, games=[])
         except (ValueError, AttributeError):
             pass
-        
+
         # Check for connection errors
         if "Connection" in error_msg or "timeout" in error_msg.lower() or "resolve" in error_msg.lower():
-            raise HTTPException(
-                status_code=503,
-                detail=f"Unable to connect to NBA API. Please try again later."
-            )
-        
-        raise HTTPException(status_code=500, detail=f"Error fetching game log: {error_msg}")
+            raise HTTPException(status_code=503, detail=f"Unable to connect to NBA API. Please try again later.")
 
+        raise HTTPException(status_code=500, detail=f"Error fetching game log: {error_msg}")

@@ -31,7 +31,7 @@ class StandingRecord(BaseModel):
     current_streak: int = Field(..., description="Number of games in the current win/loss streak.")
     current_streak_str: str = Field(..., description="Current streak string (e.g., 'W4', 'L2').")
     games_back: str = Field(..., description="Games behind the first place team (e.g., '1.5', '0.0').")
-    
+
     # Offense/Defense stats (optional - may not be available for all seasons)
     ppg: Optional[float] = Field(None, description="Points per game.")
     opp_ppg: Optional[float] = Field(None, description="Opponent points per game.")

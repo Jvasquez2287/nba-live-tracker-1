@@ -16,13 +16,13 @@ async def get_team(team_id: int) -> TeamDetailsResponse:
     """
     Get detailed information about a specific NBA team.
     Includes things like arena, owner, coach, etc.
-    
+
     Args:
         team_id: The NBA team ID (like 1610612737 for Lakers)
-        
+
     Returns:
         TeamDetailsResponse: All team information
-        
+
     Raises:
         HTTPException: If team not found or API error
     """
@@ -31,8 +31,7 @@ async def get_team(team_id: int) -> TeamDetailsResponse:
         api_kwargs = get_api_kwargs()
         await rate_limit()
         team_details_data = await asyncio.wait_for(
-            asyncio.to_thread(lambda: TeamDetails(team_id=team_id, **api_kwargs).get_dict()),
-            timeout=10.0
+            asyncio.to_thread(lambda: TeamDetails(team_id=team_id, **api_kwargs).get_dict()), timeout=10.0
         )
 
         # Check if we got valid data back

@@ -23,10 +23,10 @@ async def season_standings(season: str):
     """
     Get the standings (win/loss records) for all teams in a season.
     Shows playoff rankings and team records.
-    
+
     Args:
         season: The season year like "2023-24"
-        
+
     Returns:
         StandingsResponse: Standings for all teams
     """

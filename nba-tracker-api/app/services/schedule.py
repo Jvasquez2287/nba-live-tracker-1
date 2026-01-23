@@ -33,22 +33,18 @@ def _cleanup_player_stats_cache():
     """Remove expired entries and enforce size limit with LRU eviction."""
     current_time = time.time()
     expired_keys = [
-        player_id for player_id, entry in _player_stats_cache.items()
+        player_id
+        for player_id, entry in _player_stats_cache.items()
         if current_time - entry.get("timestamp", 0) > PLAYER_STATS_CACHE_TTL
     ]
     for key in expired_keys:
         _player_stats_cache.pop(key, None)
-    
+
     # Enforce size limit with LRU eviction (simple: remove oldest entries)
     if len(_player_stats_cache) > PLAYER_STATS_CACHE_MAX_SIZE:
         # Sort by timestamp and remove oldest
-        sorted_entries = sorted(
-            _player_stats_cache.items(),
-            key=lambda x: x[1].get("timestamp", 0)
-        )
-        keys_to_remove = [
-            key for key, _ in sorted_entries[:len(_player_stats_cache) - PLAYER_STATS_CACHE_MAX_SIZE]
-        ]
+        sorted_entries = sorted(_player_stats_cache.items(), key=lambda x: x[1].get("timestamp", 0))
+        keys_to_remove = [key for key, _ in sorted_entries[: len(_player_stats_cache) - PLAYER_STATS_CACHE_MAX_SIZE]]
         for key in keys_to_remove:
             _player_stats_cache.pop(key, None)
         logger.debug(f"LRU eviction: removed {len(keys_to_remove)} old entries from player stats cache")
@@ -57,51 +53,49 @@ def _cleanup_player_stats_cache():
 def parse_game_time_from_status(game_status: str, game_date: str) -> Optional[str]:
     """
     Parse game time from game_status string (e.g., "7:00 pm ET") and convert to UTC ISO format.
-    
+
     Args:
         game_status: Status string like "7:00 pm ET", "7:30 pm ET", "Final", etc.
         game_date: Date in YYYY-MM-DD format
-        
+
     Returns:
         ISO 8601 UTC datetime string (e.g., "2026-01-14T00:00:00Z") or None if parsing fails
     """
     if not game_status or not game_date:
         return None
-    
+
     # Pattern to match time formats like "7:00 pm ET", "7:30 pm ET", "12:00 pm ET"
     # Also handles "7 pm ET" (without minutes)
-    time_pattern = r'(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*ET'
+    time_pattern = r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*ET"
     match = re.search(time_pattern, game_status, re.IGNORECASE)
-    
+
     if not match:
         return None
-    
+
     try:
         hour = int(match.group(1))
         minute = int(match.group(2)) if match.group(2) else 0
         am_pm = match.group(3).lower()
-        
+
         # Convert to 24-hour format
-        if am_pm == 'pm' and hour != 12:
+        if am_pm == "pm" and hour != 12:
             hour += 12
-        elif am_pm == 'am' and hour == 12:
+        elif am_pm == "am" and hour == 12:
             hour = 0
-        
+
         # Parse the game date
         date_obj = datetime.strptime(game_date, "%Y-%m-%d")
-        
+
         # Create datetime in ET timezone
-        et_tz = pytz.timezone('America/New_York')
-        et_datetime = et_tz.localize(
-            datetime(date_obj.year, date_obj.month, date_obj.day, hour, minute)
-        )
-        
+        et_tz = pytz.timezone("America/New_York")
+        et_datetime = et_tz.localize(datetime(date_obj.year, date_obj.month, date_obj.day, hour, minute))
+
         # Convert to UTC
         utc_datetime = et_datetime.astimezone(pytz.UTC)
-        
+
         # Format as ISO 8601 UTC string
         return utc_datetime.strftime("%Y-%m-%dT%H:%M:%SZ")
-        
+
     except (ValueError, AttributeError) as e:
         logger.debug(f"Error parsing game time from status '{game_status}': {e}")
         return None
@@ -115,7 +109,7 @@ async def get_player_season_averages(player_id: int) -> dict:
     # Clean up expired entries periodically
     if len(_player_stats_cache) > PLAYER_STATS_CACHE_MAX_SIZE * 0.9:  # Clean when 90% full
         _cleanup_player_stats_cache()
-    
+
     current_time = time.time()
     if player_id in _player_stats_cache:
         entry = _player_stats_cache[player_id]
@@ -134,7 +128,7 @@ async def get_player_season_averages(player_id: int) -> dict:
             asyncio.to_thread(
                 lambda: playerindex.PlayerIndex(historical_nullable=HistoricalNullable.all_time, **api_kwargs)
             ),
-            timeout=15.0
+            timeout=15.0,
         )
         player_index_df = player_index_data.get_data_frames()[0]
 
@@ -150,15 +144,12 @@ async def get_player_season_averages(player_id: int) -> dict:
                 "JERSEY_NUMBER": player_data.get("JERSEY_NUMBER"),
                 "POSITION": player_data.get("POSITION"),
             }
-            _player_stats_cache[player_id] = {
-                "stats": stats,
-                "timestamp": time.time()
-            }
+            _player_stats_cache[player_id] = {"stats": stats, "timestamp": time.time()}
             # Delete DataFrames after extracting data
             del player_row
             del player_index_df
             return stats
-        
+
         # Delete DataFrames if player not found
         del player_row
         del player_index_df
@@ -199,7 +190,9 @@ async def extract_game_leaders(team_leaders_list, team_leaders_headers, game_id,
         leader_data = {
             "personId": player_id,
             "name": player_name,
-            "jerseyNum": str(leader_dict.get("PTS_PLAYER_JERSEY_NUM", "")) if leader_dict.get("PTS_PLAYER_JERSEY_NUM") else None,
+            "jerseyNum": (
+                str(leader_dict.get("PTS_PLAYER_JERSEY_NUM", "")) if leader_dict.get("PTS_PLAYER_JERSEY_NUM") else None
+            ),
             "position": leader_dict.get("PTS_PLAYER_POSITION"),
             "teamTricode": NBA_TEAMS.get(team_id, ""),
             "points": float(leader_dict.get("PTS", 0.0)),
@@ -226,6 +219,7 @@ async def get_top_players_for_upcoming_game(home_team_id: int, away_team_id: int
     try:
         # Get current season (e.g., "2024-25")
         from datetime import datetime
+
         now = datetime.now()
         if now.month >= 10:  # October-December
             season = f"{now.year}-{str(now.year + 1)[2:]}"
@@ -243,7 +237,7 @@ async def get_top_players_for_upcoming_game(home_team_id: int, away_team_id: int
             asyncio.to_thread(
                 lambda: commonteamroster.CommonTeamRoster(team_id=home_team_id, season=season, **api_kwargs).get_dict()
             ),
-            timeout=10.0
+            timeout=10.0,
         )
         home_players_data = home_roster_data["resultSets"][0]["rowSet"] if home_roster_data.get("resultSets") else []
         home_players = []
@@ -251,18 +245,24 @@ async def get_top_players_for_upcoming_game(home_team_id: int, away_team_id: int
             column_names = home_roster_data["resultSets"][0]["headers"]
             for row in home_players_data:
                 player_dict = dict(zip(column_names, row))
-                home_players.append(Player(
-                    player_id=int(player_dict["PLAYER_ID"]),
-                    name=player_dict["PLAYER"],
-                    jersey_number=player_dict.get("NUM"),
-                    position=player_dict.get("POSITION"),
-                    height=player_dict.get("HEIGHT"),
-                    weight=int(player_dict["WEIGHT"]) if player_dict.get("WEIGHT") else None,
-                    birth_date=player_dict.get("BIRTH_DATE"),
-                    age=int(player_dict["AGE"]) if player_dict.get("AGE") else None,
-                    experience="Rookie" if str(player_dict.get("EXP", "")).upper() == "R" else str(player_dict.get("EXP", "")),
-                    school=player_dict.get("SCHOOL"),
-                ))
+                home_players.append(
+                    Player(
+                        player_id=int(player_dict["PLAYER_ID"]),
+                        name=player_dict["PLAYER"],
+                        jersey_number=player_dict.get("NUM"),
+                        position=player_dict.get("POSITION"),
+                        height=player_dict.get("HEIGHT"),
+                        weight=int(player_dict["WEIGHT"]) if player_dict.get("WEIGHT") else None,
+                        birth_date=player_dict.get("BIRTH_DATE"),
+                        age=int(player_dict["AGE"]) if player_dict.get("AGE") else None,
+                        experience=(
+                            "Rookie"
+                            if str(player_dict.get("EXP", "")).upper() == "R"
+                            else str(player_dict.get("EXP", ""))
+                        ),
+                        school=player_dict.get("SCHOOL"),
+                    )
+                )
 
         # Fetch away team roster
         api_kwargs = get_api_kwargs()
@@ -271,7 +271,7 @@ async def get_top_players_for_upcoming_game(home_team_id: int, away_team_id: int
             asyncio.to_thread(
                 lambda: commonteamroster.CommonTeamRoster(team_id=away_team_id, season=season, **api_kwargs).get_dict()
             ),
-            timeout=10.0
+            timeout=10.0,
         )
         away_players_data = away_roster_data["resultSets"][0]["rowSet"] if away_roster_data.get("resultSets") else []
         away_players = []
@@ -279,18 +279,24 @@ async def get_top_players_for_upcoming_game(home_team_id: int, away_team_id: int
             column_names = away_roster_data["resultSets"][0]["headers"]
             for row in away_players_data:
                 player_dict = dict(zip(column_names, row))
-                away_players.append(Player(
-                    player_id=int(player_dict["PLAYER_ID"]),
-                    name=player_dict["PLAYER"],
-                    jersey_number=player_dict.get("NUM"),
-                    position=player_dict.get("POSITION"),
-                    height=player_dict.get("HEIGHT"),
-                    weight=int(player_dict["WEIGHT"]) if player_dict.get("WEIGHT") else None,
-                    birth_date=player_dict.get("BIRTH_DATE"),
-                    age=int(player_dict["AGE"]) if player_dict.get("AGE") else None,
-                    experience="Rookie" if str(player_dict.get("EXP", "")).upper() == "R" else str(player_dict.get("EXP", "")),
-                    school=player_dict.get("SCHOOL"),
-                ))
+                away_players.append(
+                    Player(
+                        player_id=int(player_dict["PLAYER_ID"]),
+                        name=player_dict["PLAYER"],
+                        jersey_number=player_dict.get("NUM"),
+                        position=player_dict.get("POSITION"),
+                        height=player_dict.get("HEIGHT"),
+                        weight=int(player_dict["WEIGHT"]) if player_dict.get("WEIGHT") else None,
+                        birth_date=player_dict.get("BIRTH_DATE"),
+                        age=int(player_dict["AGE"]) if player_dict.get("AGE") else None,
+                        experience=(
+                            "Rookie"
+                            if str(player_dict.get("EXP", "")).upper() == "R"
+                            else str(player_dict.get("EXP", ""))
+                        ),
+                        school=player_dict.get("SCHOOL"),
+                    )
+                )
 
         # Get top scorer from each roster based on season averages
         home_leader = None
@@ -355,13 +361,13 @@ async def getGamesForDate(date: str) -> GamesResponse:
     """
     Get all NBA games for a specific date.
     Returns games that were played or scheduled for that day.
-    
+
     Args:
         date: The date in YYYY-MM-DD format
-        
+
     Returns:
         GamesResponse: List of all games for that date
-        
+
     Raises:
         HTTPException: If no games found or API error
     """
@@ -370,8 +376,7 @@ async def getGamesForDate(date: str) -> GamesResponse:
         api_kwargs = get_api_kwargs()
         await rate_limit()
         games_data = await asyncio.wait_for(
-            asyncio.to_thread(lambda: scoreboardv2.ScoreboardV2(game_date=date, **api_kwargs).get_dict()),
-            timeout=30.0
+            asyncio.to_thread(lambda: scoreboardv2.ScoreboardV2(game_date=date, **api_kwargs).get_dict()), timeout=30.0
         )
 
         # Check if we got valid data
@@ -413,7 +418,9 @@ async def getGamesForDate(date: str) -> GamesResponse:
             try:
                 # Validate that headers and game row have the same length
                 if len(game_headers) != len(game):
-                    logger.warning(f"Game row length ({len(game)}) doesn't match headers length ({len(game_headers)}), skipping")
+                    logger.warning(
+                        f"Game row length ({len(game)}) doesn't match headers length ({len(game_headers)}), skipping"
+                    )
                     continue
 
                 # Convert the game data to a dictionary
@@ -519,7 +526,12 @@ async def getGamesForDate(date: str) -> GamesResponse:
                 # Extract game leaders with season averages
                 game_leaders = None
                 game_status_text = game_dict.get("GAME_STATUS_TEXT", "Unknown")
-                is_upcoming = "final" not in game_status_text.lower() and "live" not in game_status_text.lower() and home_score == 0 and away_score == 0
+                is_upcoming = (
+                    "final" not in game_status_text.lower()
+                    and "live" not in game_status_text.lower()
+                    and home_score == 0
+                    and away_score == 0
+                )
 
                 # For completed/live games, get leaders from TeamLeaders data (already in API response)
                 # Skip expensive roster fetching to avoid timeouts
@@ -534,13 +546,13 @@ async def getGamesForDate(date: str) -> GamesResponse:
 
                 # Extract game time - check all possible field names that NBA API might use
                 game_time_utc = (
-                    game_dict.get("GAME_TIME_UTC") or 
-                    game_dict.get("START_TIME_UTC") or 
-                    game_dict.get("GAME_DATE_TIME_UTC") or
-                    game_dict.get("GAME_ET") or
-                    None
+                    game_dict.get("GAME_TIME_UTC")
+                    or game_dict.get("START_TIME_UTC")
+                    or game_dict.get("GAME_DATE_TIME_UTC")
+                    or game_dict.get("GAME_ET")
+                    or None
                 )
-                
+
                 # If game_time_utc is still None, try parsing from game_status (e.g., "7:00 pm ET")
                 if not game_time_utc:
                     parsed_time = parse_game_time_from_status(game_status_text, date)
@@ -565,7 +577,9 @@ async def getGamesForDate(date: str) -> GamesResponse:
                 )
             except KeyError as e:
                 # If a key is missing, log and skip this game
-                logger.warning(f"Missing key in game data: {e}, skipping game. Available keys: {list(game_dict.keys())[:10]}")
+                logger.warning(
+                    f"Missing key in game data: {e}, skipping game. Available keys: {list(game_dict.keys())[:10]}"
+                )
                 continue
             except Exception as e:
                 # Catch any other errors and skip this game

@@ -16,4 +16,3 @@ def get_current_season() -> str:
         return f"{current_year}-{(current_year + 1) % 100:02d}"
     else:
         return f"{current_year - 1}-{current_year % 100:02d}"
-

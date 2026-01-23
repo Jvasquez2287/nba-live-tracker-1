@@ -42,22 +42,18 @@ def _cleanup_player_stats_cache():
     """Remove expired entries and enforce size limit with LRU eviction."""
     current_time = time.time()
     expired_keys = [
-        player_id for player_id, entry in _player_stats_cache.items()
+        player_id
+        for player_id, entry in _player_stats_cache.items()
         if current_time - entry.get("timestamp", 0) > PLAYER_STATS_CACHE_TTL
     ]
     for key in expired_keys:
         _player_stats_cache.pop(key, None)
-    
+
     # Enforce size limit with LRU eviction (simple: remove oldest entries)
     if len(_player_stats_cache) > PLAYER_STATS_CACHE_MAX_SIZE:
         # Sort by timestamp and remove oldest
-        sorted_entries = sorted(
-            _player_stats_cache.items(),
-            key=lambda x: x[1].get("timestamp", 0)
-        )
-        keys_to_remove = [
-            key for key, _ in sorted_entries[:len(_player_stats_cache) - PLAYER_STATS_CACHE_MAX_SIZE]
-        ]
+        sorted_entries = sorted(_player_stats_cache.items(), key=lambda x: x[1].get("timestamp", 0))
+        keys_to_remove = [key for key, _ in sorted_entries[: len(_player_stats_cache) - PLAYER_STATS_CACHE_MAX_SIZE]]
         for key in keys_to_remove:
             _player_stats_cache.pop(key, None)
         logger.debug(f"LRU eviction: removed {len(keys_to_remove)} old entries from player stats cache")
@@ -71,7 +67,7 @@ async def get_player_season_averages(player_id: int) -> dict:
     # Clean up expired entries periodically
     if len(_player_stats_cache) > PLAYER_STATS_CACHE_MAX_SIZE * 0.9:  # Clean when 90% full
         _cleanup_player_stats_cache()
-    
+
     current_time = time.time()
     if player_id in _player_stats_cache:
         entry = _player_stats_cache[player_id]
@@ -81,7 +77,7 @@ async def get_player_season_averages(player_id: int) -> dict:
         else:
             # Entry expired, remove it
             _player_stats_cache.pop(player_id, None)
-    
+
     try:
         # Get player index data
         api_kwargs = get_api_kwargs()
@@ -90,13 +86,13 @@ async def get_player_season_averages(player_id: int) -> dict:
             asyncio.to_thread(
                 lambda: playerindex.PlayerIndex(historical_nullable=HistoricalNullable.all_time, **api_kwargs)
             ),
-            timeout=15.0
+            timeout=15.0,
         )
         player_index_df = player_index_data.get_data_frames()[0]
-        
+
         # Find the player
         player_row = player_index_df[player_index_df["PERSON_ID"] == player_id]
-        
+
         if not player_row.empty:
             player_data = player_row.iloc[0].to_dict()
             stats = {
@@ -106,28 +102,25 @@ async def get_player_season_averages(player_id: int) -> dict:
                 "JERSEY_NUMBER": player_data.get("JERSEY_NUMBER"),
                 "POSITION": player_data.get("POSITION"),
             }
-            _player_stats_cache[player_id] = {
-                "stats": stats,
-                "timestamp": time.time()
-            }
+            _player_stats_cache[player_id] = {"stats": stats, "timestamp": time.time()}
             # Delete DataFrames after extracting data
             del player_row
             del player_index_df
             return stats
-        
+
         # Delete DataFrames if player not found
         del player_row
         del player_index_df
     except Exception as e:
         logger.warning(f"Error fetching season averages for player {player_id}: {e}")
-    
+
     return {"PTS": 0.0, "REB": 0.0, "AST": 0.0, "JERSEY_NUMBER": None, "POSITION": None}
 
 
 async def fetch_nba_scoreboard():
     """
     Get the raw scoreboard data from the NBA API.
-    
+
     Returns:
         dict: Raw scoreboard data with all game information
     """
@@ -135,8 +128,7 @@ async def fetch_nba_scoreboard():
         # Call the NBA API to get current scores (with timeout to prevent hanging)
         api_kwargs = get_api_kwargs()
         board = await asyncio.wait_for(
-            asyncio.to_thread(lambda: scoreboard.ScoreBoard(**api_kwargs).get_dict()),
-            timeout=10.0
+            asyncio.to_thread(lambda: scoreboard.ScoreBoard(**api_kwargs).get_dict()), timeout=10.0
         )
         return board.get("scoreboard", {})
     except asyncio.TimeoutError:
@@ -150,10 +142,10 @@ async def fetch_nba_scoreboard():
 def extract_team_data(team_data):
     """
     Take raw team data from the API and convert it to our Team format.
-    
+
     Args:
         team_data: Raw team data from NBA API
-        
+
     Returns:
         Team: Clean team data in our format
     """
@@ -174,13 +166,13 @@ async def extract_game_leaders(game_leaders_data, home_team_id=None, away_team_i
     Get the top player stats for both teams.
     For live games: uses current game stats (points, rebounds, assists in this game).
     For upcoming games: uses season averages (PPG, RPG, APG).
-    
+
     Args:
         game_leaders_data: Raw game leaders data from NBA API
         home_team_id: Home team ID (optional, for fallback if no leaders)
         away_team_id: Away team ID (optional, for fallback if no leaders)
         game_status_text: Game status text to determine if game is live
-        
+
     Returns:
         GameLeaders: Top players for home and away teams
     """
@@ -189,33 +181,33 @@ async def extract_game_leaders(game_leaders_data, home_team_id=None, away_team_i
 
     # Check if game is live (has started and is in progress)
     is_live = game_status_text and (
-        'live' in game_status_text.lower() or 
-        bool(re.search(r'\b[1-4]q\b', game_status_text, re.IGNORECASE)) or
-        ('ot' in game_status_text.lower() and 'final' not in game_status_text.lower())
+        "live" in game_status_text.lower()
+        or bool(re.search(r"\b[1-4]q\b", game_status_text, re.IGNORECASE))
+        or ("ot" in game_status_text.lower() and "final" not in game_status_text.lower())
     )
 
     async def extract_player(leader_data, use_game_stats=False):
         """
         Helper function to safely get player stats.
         Returns None if there's no data.
-        
+
         Args:
             leader_data: Raw leader data from NBA API
             use_game_stats: If True, use current game stats; if False, use season averages
         """
         if not leader_data:
             return None
-        
+
         person_id = leader_data.get("personId")
         if not person_id or person_id == 0:
             return None
-        
+
         if use_game_stats:
             # For live games, use current game stats from the API
             points = float(leader_data.get("points", 0))
             rebounds = float(leader_data.get("rebounds", 0))
             assists = float(leader_data.get("assists", 0))
-            
+
             # Skip if no game stats (game just started)
             if points == 0 and rebounds == 0 and assists == 0:
                 return None
@@ -225,11 +217,11 @@ async def extract_game_leaders(game_leaders_data, home_team_id=None, away_team_i
             points = float(season_stats.get("PTS", 0.0))
             rebounds = float(season_stats.get("REB", 0.0))
             assists = float(season_stats.get("AST", 0.0))
-            
+
             # Skip if no season stats available
             if points == 0.0 and rebounds == 0.0 and assists == 0.0:
                 return None
-        
+
         # Get jersey number and position
         if use_game_stats:
             # Use from game data for live games
@@ -240,7 +232,7 @@ async def extract_game_leaders(game_leaders_data, home_team_id=None, away_team_i
             season_stats = await get_player_season_averages(person_id)
             jersey_num = season_stats.get("JERSEY_NUMBER") or leader_data.get("jerseyNum", "N/A")
             position = season_stats.get("POSITION") or leader_data.get("position", "N/A")
-        
+
         return PlayerStats(
             personId=person_id,
             name=leader_data.get("name", "Unknown"),
@@ -260,17 +252,17 @@ async def extract_game_leaders(game_leaders_data, home_team_id=None, away_team_i
     # Only return if at least one leader exists
     if home_leader or away_leader:
         return GameLeaders(homeLeaders=home_leader, awayLeaders=away_leader)
-    
+
     return None
 
 
 async def getScoreboard() -> ScoreboardResponse:
     """
     Get the latest NBA scores and return them in a clean format.
-    
+
     Returns:
         ScoreboardResponse: All current games with scores and team info
-        
+
     Raises:
         HTTPException: If we can't get the data from NBA API
     """
@@ -297,7 +289,7 @@ async def getScoreboard() -> ScoreboardResponse:
                     game.get("gameLeaders", {}),
                     home_team_id=home_team.teamId,
                     away_team_id=away_team.teamId,
-                    game_status_text=game.get("gameStatusText", "")
+                    game_status_text=game.get("gameStatusText", ""),
                 )
 
                 # Create a LiveGame object with all the game info
@@ -327,14 +319,14 @@ async def getScoreboard() -> ScoreboardResponse:
 async def fetchTeamRoster(team_id: int, season: str) -> TeamRoster:
     """
     Get the full team roster (all players and coaches) for a team.
-    
+
     Args:
         team_id: The NBA team ID (like 1610612737 for Lakers)
         season: The season year like "2024-25"
-        
+
     Returns:
         TeamRoster: All players and coaches on the team
-        
+
     Raises:
         HTTPException: If team not found or API error
     """
@@ -346,7 +338,7 @@ async def fetchTeamRoster(team_id: int, season: str) -> TeamRoster:
             asyncio.to_thread(
                 lambda: commonteamroster.CommonTeamRoster(team_id=team_id, season=season, **api_kwargs).get_dict()
             ),
-            timeout=10.0
+            timeout=10.0,
         )
         player_data = raw_roster["resultSets"][0]["rowSet"]
 
@@ -393,9 +385,7 @@ async def fetchTeamRoster(team_id: int, season: str) -> TeamRoster:
                     weight=(int(player_dict["WEIGHT"]) if player_dict["WEIGHT"] else None),
                     birth_date=player_dict["BIRTH_DATE"] or None,
                     age=int(player_dict["AGE"]) if player_dict["AGE"] else None,
-                    experience=(
-                        "Rookie" if str(player_dict["EXP"]).upper() == "R" else str(player_dict["EXP"])
-                    ),
+                    experience=("Rookie" if str(player_dict["EXP"]).upper() == "R" else str(player_dict["EXP"])),
                     school=player_dict["SCHOOL"] or None,
                 )
             )
@@ -417,10 +407,10 @@ async def fetchTeamRoster(team_id: int, season: str) -> TeamRoster:
 async def _get_game_info_from_scoreboard(game_id: str):
     """
     Helper function to get basic game info from scoreboard when boxscore is not available.
-    
+
     Args:
         game_id: The unique game ID from NBA
-        
+
     Returns:
         dict: Basic game info with team names and status, or None if not found
     """
@@ -428,7 +418,7 @@ async def _get_game_info_from_scoreboard(game_id: str):
         raw_scoreboard_data = await fetch_nba_scoreboard()
         if not raw_scoreboard_data:
             return None
-            
+
         raw_games = raw_scoreboard_data.get("games", [])
         for game in raw_games:
             if game.get("gameId") == game_id:
@@ -453,13 +443,13 @@ async def _get_game_info_from_scoreboard(game_id: str):
 async def getBoxScore(game_id: str) -> BoxScoreResponse:
     """
     Get the full box score (detailed stats) for a specific game.
-    
+
     Args:
         game_id: The unique game ID from NBA
-        
+
     Returns:
         BoxScoreResponse: Complete stats for both teams and all players
-        
+
     Raises:
         HTTPException: If game not found or API error
     """
@@ -468,8 +458,7 @@ async def getBoxScore(game_id: str) -> BoxScoreResponse:
         api_kwargs = get_api_kwargs()
         await rate_limit()
         game_data = await asyncio.wait_for(
-            asyncio.to_thread(lambda: boxscore.BoxScore(game_id, **api_kwargs).get_dict()),
-            timeout=10.0
+            asyncio.to_thread(lambda: boxscore.BoxScore(game_id, **api_kwargs).get_dict()), timeout=10.0
         )
 
         if "game" not in game_data:
@@ -584,7 +573,9 @@ async def getBoxScore(game_id: str) -> BoxScoreResponse:
         # If boxscore API fails (e.g., game hasn't started), try to get basic info from scoreboard
         error_str = str(e)
         if "Expecting value" in error_str or "JSONDecodeError" in error_str or "game" not in error_str.lower():
-            logger.warning(f"Box score data not available for game {game_id} (game may not have started): {type(e).__name__} - {error_str}")
+            logger.warning(
+                f"Box score data not available for game {game_id} (game may not have started): {type(e).__name__} - {error_str}"
+            )
             game_info = await _get_game_info_from_scoreboard(game_id)
             if game_info:
                 return BoxScoreResponse(
@@ -619,7 +610,7 @@ async def getBoxScore(game_id: str) -> BoxScoreResponse:
                         players=[],
                     ),
                 )
-        
+
         logger.error(f"Error retrieving box score for game {game_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving box score: {str(e)}")
 
@@ -627,14 +618,14 @@ async def getBoxScore(game_id: str) -> BoxScoreResponse:
 async def getPlayByPlay(game_id: str) -> PlayByPlayResponse:
     """
     Get the play-by-play (all game events) for a specific game.
-    
+
     Args:
         game_id: The unique game ID from NBA
-        
+
     Returns:
         PlayByPlayResponse: List of all plays/events that happened in the game
         Returns empty list if game hasn't started yet.
-        
+
     Raises:
         HTTPException: If game not found or API error
     """
@@ -642,8 +633,7 @@ async def getPlayByPlay(game_id: str) -> PlayByPlayResponse:
         # Get play-by-play data from NBA API (with timeout to prevent hanging)
         api_kwargs = get_api_kwargs()
         play_by_play_data = await asyncio.wait_for(
-            asyncio.to_thread(lambda: playbyplay.PlayByPlay(game_id, **api_kwargs).get_dict()),
-            timeout=10.0
+            asyncio.to_thread(lambda: playbyplay.PlayByPlay(game_id, **api_kwargs).get_dict()), timeout=10.0
         )
 
         if "game" not in play_by_play_data or "actions" not in play_by_play_data["game"]:
@@ -681,8 +671,10 @@ async def getPlayByPlay(game_id: str) -> PlayByPlayResponse:
         # If play-by-play API fails (e.g., game hasn't started), return empty response
         error_str = str(e)
         if "Expecting value" in error_str or "JSONDecodeError" in error_str:
-            logger.warning(f"Play-by-play data not available for game {game_id} (game may not have started): {type(e).__name__} - {error_str}")
+            logger.warning(
+                f"Play-by-play data not available for game {game_id} (game may not have started): {type(e).__name__} - {error_str}"
+            )
             return PlayByPlayResponse(game_id=game_id, plays=[])
-        
+
         logger.error(f"Error retrieving play-by-play for game {game_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving play-by-play: {str(e)}")

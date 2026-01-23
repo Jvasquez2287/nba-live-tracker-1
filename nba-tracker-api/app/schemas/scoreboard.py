@@ -183,7 +183,9 @@ class Scoreboard(BaseModel):
 class KeyMoment(BaseModel):
     """Represents a key moment detected in a game."""
 
-    type: str = Field(..., description="Type of key moment (game_tying_shot, lead_change, scoring_run, clutch_play, big_shot)")
+    type: str = Field(
+        ..., description="Type of key moment (game_tying_shot, lead_change, scoring_run, clutch_play, big_shot)"
+    )
     play: dict = Field(..., description="Play-by-play event that triggered the moment")
     timestamp: str = Field(..., description="ISO timestamp when moment was detected")
     context: Optional[str] = Field(None, description="AI-generated context explaining why the moment matters")
@@ -202,9 +204,7 @@ class WinProbability(BaseModel):
     home_win_prob: float = Field(..., ge=0.0, le=1.0, description="Home team win probability (0.0-1.0)")
     away_win_prob: float = Field(..., ge=0.0, le=1.0, description="Away team win probability (0.0-1.0)")
     timestamp: str = Field(..., description="ISO timestamp when probability was calculated")
-    probability_history: Optional[List[dict]] = Field(
-        None, description="History of probability changes (last N plays)"
-    )
+    probability_history: Optional[List[dict]] = Field(None, description="History of probability changes (last N plays)")
 
 
 class WinProbabilityResponse(BaseModel):

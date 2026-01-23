@@ -27,10 +27,7 @@ from app.services.websockets_manager import (
 )
 from app.services.key_moments import start_cleanup_task, stop_cleanup_task
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -38,41 +35,41 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """
     Start background polling and WebSocket broadcasting on app startup.
-    
+
     How it works:
     - Data cache polling: fetches from NBA API at fixed intervals
     - WebSocket broadcasting: reads from cache and sends to clients
-    
+
     This ensures only one poller exists per data type, and WebSocket
     connections never trigger NBA API calls.
     """
     logger.info("Starting NBA data polling and WebSocket broadcasting...")
-    
+
     # Start background polling tasks that fetch data from NBA API
     data_cache.start_polling()
-    
+
     # Start key moments cleanup task
     start_cleanup_task()
-    
+
     # Start WebSocket broadcast tasks that read from cache
     scoreboard_task = asyncio.create_task(scoreboard_websocket_manager.broadcast_updates())
     playbyplay_task = asyncio.create_task(playbyplay_websocket_manager.broadcast_playbyplay_updates())
-    
+
     # Start WebSocket cleanup tasks
     scoreboard_websocket_manager.start_cleanup_task()
     playbyplay_websocket_manager.start_cleanup_task()
-    
+
     try:
         yield
     finally:
         logger.info("Shutting down background tasks...")
-        
+
         await data_cache.stop_polling()
         await stop_cleanup_task()
-        
+
         await scoreboard_websocket_manager.stop_cleanup_task()
         await playbyplay_websocket_manager.stop_cleanup_task()
-        
+
         scoreboard_task.cancel()
         playbyplay_task.cancel()
         try:
@@ -102,12 +99,14 @@ if frontend_url != "*":
     allowed_origins = [frontend_url]
     # Always allow localhost for local development
     if "localhost" not in frontend_url and "127.0.0.1" not in frontend_url:
-        allowed_origins.extend([
-            "http://localhost:3000",
-            "http://localhost:5173",  # Vite default port
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173",
-        ])
+        allowed_origins.extend(
+            [
+                "http://localhost:3000",
+                "http://localhost:5173",  # Vite default port
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:5173",
+            ]
+        )
 
 app.add_middleware(
     CORSMiddleware,
@@ -128,7 +127,7 @@ def home():
 def check_config():
     """Check if Groq API key is configured (for debugging)."""
     from app.config import get_groq_api_key
-    
+
     groq_key = get_groq_api_key()
     return {
         "groq_configured": groq_key is not None,

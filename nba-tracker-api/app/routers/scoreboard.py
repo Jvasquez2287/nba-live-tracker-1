@@ -30,7 +30,7 @@ router = APIRouter()
 async def websocket_endpoint(websocket: WebSocket):
     """
     WebSocket connection for live NBA scoreboard updates.
-    
+
     When a client connects:
     - They get the latest scores right away
     - They receive updates automatically when scores change
@@ -82,11 +82,11 @@ async def websocket_endpoint(websocket: WebSocket):
 async def getTeamRoster(team_id: int, season: str):
     """
     Get all players and coaches on a team for a specific season.
-    
+
     Args:
         team_id: The NBA team ID
         season: The season year like "2024-25"
-        
+
     Returns:
         TeamRoster: All players and coaches on the team
     """
@@ -107,10 +107,10 @@ async def getTeamRoster(team_id: int, season: str):
 async def get_game_boxscore(game_id: str):
     """
     Get the full box score (detailed stats) for a specific game.
-    
+
     Args:
         game_id: The unique game ID from NBA
-        
+
     Returns:
         BoxScoreResponse: Complete stats for both teams and all players
     """
@@ -132,10 +132,10 @@ async def get_game_playbyplay(game_id: str):
     """
     Get the play-by-play (all game events) for a specific game.
     Works for both live and completed games.
-    
+
     Args:
         game_id: The unique game ID from NBA
-        
+
     Returns:
         PlayByPlayResponse: List of all plays/events that happened in the game
     """
@@ -150,12 +150,12 @@ async def get_game_playbyplay(game_id: str):
 async def playbyplay_websocket_endpoint(websocket: WebSocket, game_id: str):
     """
     WebSocket connection for live play-by-play updates for a specific game.
-    
+
     When a client connects:
     - They get all plays that have happened so far
     - They receive new plays automatically as they happen
     - Connection stays open until client disconnects
-    
+
     Args:
         game_id: The game to watch for play-by-play updates
     """
@@ -163,7 +163,10 @@ async def playbyplay_websocket_endpoint(websocket: WebSocket, game_id: str):
 
     try:
         # Check if connection is still active after initial connection
-        if game_id not in playbyplay_websocket_manager.active_connections or websocket not in playbyplay_websocket_manager.active_connections[game_id]:
+        if (
+            game_id not in playbyplay_websocket_manager.active_connections
+            or websocket not in playbyplay_websocket_manager.active_connections[game_id]
+        ):
             return
 
         # Keep connection open and listen for messages from client
@@ -199,42 +202,33 @@ async def get_batched_insights():
     """
     Get AI-generated insights for all currently live games.
     Returns insights only for games with meaningful changes.
-    
+
     Returns:
         Dict with timestamp and insights list
     """
     try:
         # Get current scoreboard
         scoreboard_data = await data_cache.get_scoreboard()
-        
+
         if not scoreboard_data:
-            return {
-                "timestamp": "",
-                "insights": []
-            }
-        
+            return {"timestamp": "", "insights": []}
+
         # Extract live games only (gameStatus == 2)
-        live_games = [
-            game for game in scoreboard_data.scoreboard.games
-            if game.gameStatus == 2
-        ]
-        
+        live_games = [game for game in scoreboard_data.scoreboard.games if game.gameStatus == 2]
+
         if not live_games:
-            return {
-                "timestamp": "",
-                "insights": []
-            }
-        
+            return {"timestamp": "", "insights": []}
+
         # Format games for batched insights
         games_for_insights = []
         for game in live_games:
             home_team = game.homeTeam
             away_team = game.awayTeam
-            
+
             # Extract win probabilities if available (from gameLeaders or calculate from score)
             home_score = home_team.score or 0
             away_score = away_team.score or 0
-            
+
             # Simple win probability based on score difference (if no actual prob available)
             total_score = home_score + away_score
             if total_score > 0:
@@ -243,29 +237,28 @@ async def get_batched_insights():
             else:
                 win_prob_home = 0.5
                 win_prob_away = 0.5
-            
-            games_for_insights.append({
-                "game_id": game.gameId,
-                "home_team": f"{home_team.teamCity} {home_team.teamName}".strip(),
-                "away_team": f"{away_team.teamCity} {away_team.teamName}".strip(),
-                "home_score": home_score,
-                "away_score": away_score,
-                "quarter": game.period,
-                "time_remaining": game.gameClock or "",
-                "win_prob_home": win_prob_home,
-                "win_prob_away": win_prob_away,
-                "last_event": game.gameStatusText,
-            })
-        
+
+            games_for_insights.append(
+                {
+                    "game_id": game.gameId,
+                    "home_team": f"{home_team.teamCity} {home_team.teamName}".strip(),
+                    "away_team": f"{away_team.teamCity} {away_team.teamName}".strip(),
+                    "home_score": home_score,
+                    "away_score": away_score,
+                    "quarter": game.period,
+                    "time_remaining": game.gameClock or "",
+                    "win_prob_home": win_prob_home,
+                    "win_prob_away": win_prob_away,
+                    "last_event": game.gameStatusText,
+                }
+            )
+
         # Generate batched insights
         return await generate_batched_insights(games_for_insights)
-        
+
     except Exception as e:
         logger.error(f"Error generating batched insights: {e}", exc_info=True)
-        return {
-            "timestamp": "",
-            "insights": []
-        }
+        return {"timestamp": "", "insights": []}
 
 
 # Get lead change explanation for a specific game
@@ -279,39 +272,39 @@ async def get_lead_change_explanation(game_id: str):
     """
     Get on-demand explanation for why the lead changed in a game.
     Uses last 5 plays to explain the change.
-    
+
     Args:
         game_id: The unique game ID from NBA
-        
+
     Returns:
         Dict with summary and key_factors explaining the lead change
     """
     try:
         # Get current game data
         scoreboard_data = await data_cache.get_scoreboard()
-        
+
         if not scoreboard_data:
             raise HTTPException(status_code=404, detail="Scoreboard data not available")
-        
+
         # Find the game
         game = None
         for g in scoreboard_data.scoreboard.games:
             if g.gameId == game_id:
                 game = g
                 break
-        
+
         if not game:
             raise HTTPException(status_code=404, detail=f"Game {game_id} not found")
-        
+
         # Get play-by-play for last 5 plays
         playbyplay_data = await data_cache.get_playbyplay(game_id)
-        
+
         last_5_plays = []
         if playbyplay_data and playbyplay_data.plays:
             # Get last 5 plays (most recent first)
             sorted_plays = sorted(playbyplay_data.plays, key=lambda p: p.action_number, reverse=True)
             last_5_plays = sorted_plays[:5]
-            
+
             # Convert to dict format
             last_5_plays = [
                 {
@@ -321,26 +314,27 @@ async def get_lead_change_explanation(game_id: str):
                 }
                 for play in last_5_plays
             ]
-        
+
         home_team = game.homeTeam
         away_team = game.awayTeam
         current_home_score = home_team.score or 0
         current_away_score = away_team.score or 0
-        
+
         # Get previous scores from cache if available
         from app.services.batched_insights import _insights_cache
+
         previous_scores = _insights_cache.get_previous_scores(game_id)
-        
+
         if previous_scores:
             previous_home_score, previous_away_score = previous_scores
         else:
             # No previous scores tracked - use current as previous (first call)
             previous_home_score = current_home_score
             previous_away_score = current_away_score
-        
+
         # Update tracking
         _insights_cache.last_scores[game_id] = (current_home_score, current_away_score)
-        
+
         # Generate explanation
         explanation = await generate_lead_change_explanation(
             game_id=game_id,
@@ -354,12 +348,12 @@ async def get_lead_change_explanation(game_id: str):
             quarter=game.period,
             time_remaining=game.gameClock or "",
         )
-        
+
         if not explanation:
             raise HTTPException(status_code=500, detail="Failed to generate lead change explanation")
-        
+
         return explanation
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -378,28 +372,25 @@ async def get_lead_change_explanation(game_id: str):
 async def get_game_key_moments(game_id: str):
     """
     Get recent key moments for a game.
-    
+
     This endpoint returns all key moments detected for a game in the last 5 minutes.
     Key moments are automatically detected by analyzing play-by-play events - things like
     game-tying shots, lead changes, scoring runs, clutch plays, and big shots.
-    
+
     Each moment includes AI-generated context explaining why it matters. Moments are also
     automatically sent via WebSocket when detected, so you can use this endpoint to get
     historical moments or if you missed a WebSocket message.
-    
+
     Args:
         game_id: The unique game ID from NBA
-        
+
     Returns:
         KeyMomentsResponse: List of recent key moments with AI-generated context
     """
     try:
         moments = await get_key_moments_for_game(game_id)
-        
-        return KeyMomentsResponse(
-            game_id=game_id,
-            moments=moments
-        )
+
+        return KeyMomentsResponse(game_id=game_id, moments=moments)
     except Exception as e:
         logger.error(f"Error getting key moments for game {game_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error getting key moments: {str(e)}")
@@ -416,29 +407,26 @@ async def get_game_key_moments(game_id: str):
 async def get_game_win_probability(game_id: str):
     """
     Get real-time win probability for a game.
-    
+
     This endpoint fetches win probability data from the NBA API, which calculates
     the likelihood of each team winning based on the current game state (score,
     time remaining, etc.). Win probability updates as the game progresses.
-    
+
     The response includes:
     - Current win probability for home and away teams (0.0-1.0)
     - Timestamp when probability was calculated
     - Optional probability history for visualization
-    
+
     Args:
         game_id: The unique game ID from NBA (10-digit string)
-        
+
     Returns:
         WinProbabilityResponse: Win probability data, or None if game hasn't started or data unavailable
     """
     try:
         win_prob_data = await get_win_probability(game_id)
-        
-        return WinProbabilityResponse(
-            game_id=game_id,
-            win_probability=win_prob_data
-        )
+
+        return WinProbabilityResponse(game_id=game_id, win_probability=win_prob_data)
     except Exception as e:
         logger.error(f"Error getting win probability for game {game_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error getting win probability: {str(e)}")

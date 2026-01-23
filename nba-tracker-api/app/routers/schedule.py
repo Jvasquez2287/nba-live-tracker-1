@@ -20,10 +20,10 @@ router = APIRouter()
 async def get_games_for_date(date: str):
     """
     Get all games that were played or scheduled for a specific date.
-    
+
     Args:
         date: The date in YYYY-MM-DD format
-        
+
     Returns:
         GamesResponse: List of all games for that date
     """

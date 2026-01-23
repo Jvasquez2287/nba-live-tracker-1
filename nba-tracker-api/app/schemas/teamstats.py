@@ -17,4 +17,3 @@ class TeamStatCategory(BaseModel):
 class TeamStatsResponse(BaseModel):
     season: str = Field(..., description="The season for which stats are fetched (e.g., '2024-25')")
     categories: List[TeamStatCategory] = Field(..., description="List of stat categories and their teams")
-

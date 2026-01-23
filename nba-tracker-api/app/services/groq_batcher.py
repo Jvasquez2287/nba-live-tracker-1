@@ -6,12 +6,12 @@ Instead of calling Groq per-item, we batch multiple items into one API call for 
 
 Usage:
     from app.services.groq_batcher import generate_batched_groq_responses
-    
+
     items = [
         {"id": "item1", "data": {...}},
         {"id": "item2", "data": {...}},
     ]
-    
+
     results = await generate_batched_groq_responses(
         items=items,
         build_prompt_fn=lambda items: build_my_prompt(items),
@@ -40,8 +40,8 @@ _batch_cache: Dict[str, tuple] = {}  # cache_key -> (data, timestamp)
 BATCH_CACHE_MAX_SIZE = 1000  # Maximum 1000 cached responses
 
 
-T = TypeVar('T')  # Input item type
-R = TypeVar('R')  # Result type
+T = TypeVar("T")  # Input item type
+R = TypeVar("R")  # Result type
 
 
 async def generate_batched_groq_responses(
@@ -56,10 +56,10 @@ async def generate_batched_groq_responses(
 ) -> Dict[str, R]:
     """
     Generate batched Groq AI responses for multiple items in one API call.
-    
+
     This is the standard pattern for all Groq AI features. Instead of calling Groq
     per-item, we batch all items into one call for efficiency.
-    
+
     Args:
         items: List of items to process (can be any type)
         build_prompt_fn: Function that takes items and returns a prompt string
@@ -69,10 +69,10 @@ async def generate_batched_groq_responses(
         cache_ttl: Cache time-to-live in seconds (default 60)
         timeout: Groq API call timeout in seconds (default 10)
         empty_result: What to return if generation fails (default empty dict)
-        
+
     Returns:
         Dict mapping item IDs to results (or empty dict if generation fails)
-        
+
     Example:
         # For batched insights:
         results = await generate_batched_groq_responses(
@@ -82,7 +82,7 @@ async def generate_batched_groq_responses(
             parse_response_fn=lambda r: parse_insights_response(r),
             cache_key_fn=lambda gs: create_insights_cache_key(gs),
         )
-        
+
         # For batched moment contexts:
         results = await generate_batched_groq_responses(
             items=moments_with_info,
@@ -93,11 +93,11 @@ async def generate_batched_groq_responses(
     """
     if not items:
         return empty_result or {}
-    
+
     # Clean up expired entries periodically
     if len(_batch_cache) > BATCH_CACHE_MAX_SIZE * 0.9:  # Clean when 90% full
         cleanup_batch_cache()
-    
+
     # Check cache if cache_key_fn provided
     cache_key = None
     if cache_key_fn:
@@ -109,22 +109,22 @@ async def generate_batched_groq_responses(
                 return data
             else:
                 del _batch_cache[cache_key]
-    
+
     # Check if Groq is available
     if not GROQ_AVAILABLE:
         logger.debug("Groq not available for batched generation")
         return empty_result or {}
-    
+
     groq_api_key = get_groq_api_key()
     if not groq_api_key:
         logger.debug("Groq API key not configured")
         return empty_result or {}
-    
+
     try:
         # Build prompt and system message
         prompt = build_prompt_fn(items)
         system_message = get_system_message_fn()
-        
+
         # Call Groq API with timeout
         try:
             response = await asyncio.wait_for(
@@ -132,45 +132,45 @@ async def generate_batched_groq_responses(
                     api_key=groq_api_key,
                     system_message=system_message,
                     user_prompt=prompt,
-                    rate_limiter=get_groq_rate_limiter()
+                    rate_limiter=get_groq_rate_limiter(),
                 ),
-                timeout=timeout
+                timeout=timeout,
             )
         except asyncio.TimeoutError:
             logger.warning(f"Batched Groq generation timeout after {timeout}s")
             return empty_result or {}
-        
+
         if not response or not response.get("content"):
             logger.warning("Empty response from Groq")
             return empty_result or {}
-        
+
         # Parse JSON response
         content = response["content"]
-        
+
         # Remove markdown code blocks if present
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
         elif "```" in content:
             content = content.split("```")[1].split("```")[0].strip()
-        
+
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse Groq JSON response: {e}")
             logger.debug(f"Response content (first 500 chars): {content[:500]}")
             return empty_result or {}
-        
+
         # Parse response using provided function
         results = parse_response_fn(parsed)
-        
+
         # Cache result if cache_key provided
         if cache_key and results:
             _batch_cache[cache_key] = (results, time.time())
             logger.debug(f"Cached batched response for {len(items)} items")
-        
+
         logger.info(f"Generated batched response for {len(items)} items, {len(results)} results")
         return results
-        
+
     except Exception as e:
         logger.warning(f"Error generating batched Groq responses: {e}", exc_info=True)
         return empty_result or {}
@@ -179,29 +179,23 @@ async def generate_batched_groq_responses(
 def cleanup_batch_cache():
     """Remove expired entries and enforce size limit."""
     current_time = time.time()
-    
+
     # Remove expired entries
     expired_keys = [
-        key for key, (_, timestamp) in _batch_cache.items()
-        if current_time - timestamp > 3600.0  # 1 hour default TTL
+        key for key, (_, timestamp) in _batch_cache.items() if current_time - timestamp > 3600.0  # 1 hour default TTL
     ]
     for key in expired_keys:
         _batch_cache.pop(key, None)
-    
+
     # Enforce size limit (remove oldest entries)
     if len(_batch_cache) > BATCH_CACHE_MAX_SIZE:
         # Sort by timestamp and remove oldest
-        sorted_entries = sorted(
-            _batch_cache.items(),
-            key=lambda x: x[1][1]  # Sort by timestamp
-        )
-        keys_to_remove = [
-            key for key, _ in sorted_entries[:len(_batch_cache) - BATCH_CACHE_MAX_SIZE]
-        ]
+        sorted_entries = sorted(_batch_cache.items(), key=lambda x: x[1][1])  # Sort by timestamp
+        keys_to_remove = [key for key, _ in sorted_entries[: len(_batch_cache) - BATCH_CACHE_MAX_SIZE]]
         for key in keys_to_remove:
             _batch_cache.pop(key, None)
         logger.debug(f"LRU eviction: removed {len(keys_to_remove)} old entries from batch cache")
-    
+
     if expired_keys:
         logger.debug(f"Cleaned up {len(expired_keys)} expired entries from batch cache")
 
@@ -209,4 +203,3 @@ def cleanup_batch_cache():
 def clear_batch_cache():
     """Clear all cached batched responses. Useful for testing or cache invalidation."""
     _batch_cache.clear()
-

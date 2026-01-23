@@ -28,4 +28,3 @@ class TeamGameLogResponse(BaseModel):
     team_id: int = Field(..., description="NBA team ID")
     season: str = Field(..., description="Season (e.g., '2024-25')")
     games: List[TeamGameLogEntry] = Field(..., description="List of game log entries")
-
