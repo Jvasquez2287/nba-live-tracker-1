@@ -1,0 +1,1 @@
+const u=()=>{const e=new Date,t=e.getFullYear();return e.getMonth()+1>=10?`${t}-${(t+1).toString().slice(2)}`:`${t-1}-${t.toString().slice(2)}`},g=(e=5)=>{const t=[],n=new Date().getFullYear(),s=new Date().getMonth()+1>=10?n:n-1;for(let r=0;r<e;r++){const o=s-r,c=`${o}-${(o+1).toString().slice(2)}`;t.push(c)}return t};export{g as a,u as g};
