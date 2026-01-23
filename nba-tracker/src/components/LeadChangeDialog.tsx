@@ -27,8 +27,6 @@ interface LeadChangeDialogProps {
   open: boolean;
   onClose: () => void;
   explanation: LeadChangeExplanation | null;
-  homeTeam: string;
-  awayTeam: string;
 }
 
 /**
@@ -39,8 +37,6 @@ const LeadChangeDialog: React.FC<LeadChangeDialogProps> = ({
   open,
   onClose,
   explanation,
-  homeTeam: _homeTeam,
-  awayTeam: _awayTeam,
 }) => {
   const theme = useTheme();
 

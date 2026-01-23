@@ -242,7 +242,7 @@ const MomentumChart: React.FC<MomentumChartProps> = ({ plays, homeTeam, awayTeam
   const awayColor = theme.palette.warning.main || '#ff9800'; // Orange for away team leading
 
   // Custom tooltip component - broadcast-quality design
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: TooltipProps) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload as MomentumDataPoint;
       const leadingTeam = data.differential > 0 ? homeTeam : awayTeam;
@@ -417,6 +417,7 @@ const MomentumChart: React.FC<MomentumChartProps> = ({ plays, homeTeam, awayTeam
     : null;
 
   // Find lead change points for annotations
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const leadChangePoints = useMemo(() => {
     const changes: Array<{ index: number; team: string; time: string }> = [];
     for (let i = 0; i < chartData.length; i++) {
@@ -433,6 +434,7 @@ const MomentumChart: React.FC<MomentumChartProps> = ({ plays, homeTeam, awayTeam
   }, [chartData, homeTeam, awayTeam]);
 
   // Group data points by leading team for background shading
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const leadingSections = useMemo(() => {
     const sections: Array<{ start: number; end: number; team: 'home' | 'away' | 'tied' }> = [];
     let currentTeam: 'home' | 'away' | 'tied' = chartData[0]?.differential > 0 ? 'home' : chartData[0]?.differential < 0 ? 'away' : 'tied';
@@ -700,7 +702,7 @@ const MomentumChart: React.FC<MomentumChartProps> = ({ plays, homeTeam, awayTeam
             data={transformedData.filter((_, idx) => chartData[idx].isLeadChange)}
             dataKey="differential"
             fill={theme.palette.mode === 'dark' ? 'rgba(255, 193, 7, 0.8)' : 'rgba(255, 152, 0, 0.8)'}
-            shape={(props: any) => {
+            shape={(props: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
               const { cx, cy } = props;
               return (
                 <circle

@@ -43,7 +43,7 @@ const WeeklyCalendar = ({ selectedDate, setSelectedDate }: WeeklyCalendarProps) 
         setCurrentWeekStart(weekStart);
       }
     }
-  }, [selectedDate]);
+  }, [selectedDate, currentWeekStart]);
 
   /**
    * Navigate to previous week.

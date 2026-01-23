@@ -55,7 +55,8 @@ jobs:
   frontend:
     name: Frontend - React Lint & Build
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: read #This is required for actions/checkout
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

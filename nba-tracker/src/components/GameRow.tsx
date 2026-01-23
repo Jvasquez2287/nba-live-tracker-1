@@ -894,8 +894,6 @@ const GameRow: React.FC<GameRowProps> = ({
         open={leadChangeDialogOpen}
         onClose={() => setLeadChangeDialogOpen(false)}
         explanation={leadChangeExplanation}
-        homeTeam={homeTeam || ''}
-        awayTeam={awayTeam || ''}
       />
     </Paper>
   );

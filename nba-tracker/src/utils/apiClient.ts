@@ -91,7 +91,7 @@ export async function fetchJson<T>(
 export async function fetchLeagueLeaders(
   statCategory: string,
   season?: string
-): Promise<any> {
+): Promise<unknown> {
   const params = new URLSearchParams({ stat_category: statCategory });
   if (season) {
     params.append('season', season);

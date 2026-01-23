@@ -84,7 +84,7 @@ const GameDetailsDrawer = ({ gameId, open, onClose, initialTab = 'box', gameInfo
   /**
    * Render modern team stats with improved visual hierarchy.
    */
-  const renderTeamStats = (team: TeamBoxScoreStats, _isHome: boolean) => (
+  const renderTeamStats = (team: TeamBoxScoreStats) => (
     <Box sx={{ mb: { xs: 3, sm: 4 } }}>
       {/* Team header card */}
       <Paper
@@ -419,9 +419,9 @@ const GameDetailsDrawer = ({ gameId, open, onClose, initialTab = 'box', gameInfo
           ) : tab === 'box' && boxScore ? (
             // Show box score for both teams
             <>
-              {renderTeamStats(boxScore.away_team, false)}
+              {renderTeamStats(boxScore.away_team)}
               <Divider sx={{ my: { xs: 3, sm: 4 } }} />
-              {renderTeamStats(boxScore.home_team, true)}
+              {renderTeamStats(boxScore.home_team)}
             </>
           ) : tab === 'play' ? (
             // Show play-by-play component
