@@ -1,6 +1,7 @@
 // API client with automatic retries and timeouts
 // Handles network hiccups by retrying failed requests
 import { API_BASE_URL } from './apiConfig';
+import { LeagueLeadersResponse } from '../types/league';
 
 interface RetryOptions {
   maxRetries?: number;
@@ -91,7 +92,7 @@ export async function fetchJson<T>(
 export async function fetchLeagueLeaders(
   statCategory: string,
   season?: string
-): Promise<unknown> {
+): Promise<LeagueLeadersResponse> {
   const params = new URLSearchParams({ stat_category: statCategory });
   if (season) {
     params.append('season', season);

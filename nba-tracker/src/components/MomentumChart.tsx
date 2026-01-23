@@ -50,6 +50,13 @@ interface MomentumDataPoint {
   clock: string;
 }
 
+interface TooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    payload: MomentumDataPoint;
+  }>;
+}
+
 /**
  * Parse ISO 8601 clock string (e.g., "PT12M00.00S") to minutes.
  * 
