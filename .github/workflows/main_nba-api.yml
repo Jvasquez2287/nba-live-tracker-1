@@ -50,7 +50,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: nba-tracker-api/
+          path: |
+            nba-tracker-api/**
+            !nba-tracker-api/venv/
 
   frontend:
     name: Frontend - React Lint & Build
