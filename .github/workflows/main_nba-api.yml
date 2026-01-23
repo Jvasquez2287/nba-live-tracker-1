@@ -23,7 +23,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       - name: Install backend dependencies
         run: |
@@ -31,7 +31,7 @@ jobs:
           python -m venv venv
           source venv/bin/activate
           pip install --upgrade pip
-          pip install -r requirements.txt
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install -r requirements.txt
           pip install black pytest
 
       - name: Format backend with Black
@@ -45,6 +45,12 @@ jobs:
           cd nba-tracker-api
           source venv/bin/activate
           pytest || echo "No tests found, skipping..."
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-app
+          path: nba-tracker-api/
 
   frontend:
     name: Frontend - React Lint & Build
