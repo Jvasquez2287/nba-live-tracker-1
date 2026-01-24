@@ -34,6 +34,11 @@ jobs:
           PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install -r requirements.txt
           pip install black pytest
 
+      - name: Prepare deployment files
+        run: |
+          cd nba-tracker-api
+          cp app/main.py .
+
       - name: Format backend with Black
         run: |
           cd nba-tracker-api
