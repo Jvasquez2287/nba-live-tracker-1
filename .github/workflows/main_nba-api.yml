@@ -11,92 +11,47 @@ on:
   workflow_dispatch:
 
 jobs:
-  backend:
-    name: Backend - FastAPI Format, Lint, Test
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read #This is required for actions/checkout
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
-      - name: Set up Python
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python version
         uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: '3.14'
 
-      - name: Install backend dependencies
-        run: |
-          cd nba-tracker-api
+      # 🛠️ Local Build Section (Optional)
+      # The following section in your workflow is designed to catch build issues early on the client side, before deployment. This can be helpful for debugging and validation. However, if this step significantly increases deployment time and early detection is not critical for your workflow, you may remove this section to streamline the deployment process.
+      - name: Create and Start virtual environment and Install dependencies
+        run: | 
           python -m venv venv
           source venv/bin/activate
           pip install --upgrade pip
           PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install -r requirements.txt
           pip install black pytest
-
-      - name: Prepare deployment files
-        run: |
-          cd nba-tracker-api
-          cp app/main.py .
-
-      - name: Format backend with Black
-        run: |
-          cd nba-tracker-api
-          source venv/bin/activate
-          black . --check
-
-      - name: Run backend tests
-        run: |
-          cd nba-tracker-api
-          source venv/bin/activate
-          pytest || echo "No tests found, skipping..."
-
-      - name: Upload backend artifact
+                
+      # By default, when you enable GitHub CI/CD integration through the Azure portal, the platform automatically sets the SCM_DO_BUILD_DURING_DEPLOYMENT application setting to true. This triggers the use of Oryx, a build engine that handles application compilation and dependency installation (e.g., pip install) directly on the platform during deployment. Hence, we exclude the antenv virtual environment directory from the deployment artifact to reduce the payload size. 
+      - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
         with:
           name: python-app
           path: |
-            nba-tracker-api/**
-            !nba-tracker-api/venv/
+            .
+            !antenv/
 
-  frontend:
-    name: Frontend - React Lint & Build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read #This is required for actions/checkout
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-
-      - name: Install frontend dependencies
-        run: |
-          cd nba-tracker
-          npm install
-
-      - name: Lint frontend with ESLint
-        run: |
-          cd nba-tracker
-          npm run lint
-
-      - name: Format frontend with Prettier
-        run: |
-          cd nba-tracker
-          npm run format
-
-      - name: Build frontend with Vite
-        run: |
-          cd nba-tracker
-          npm run build
-
+      # 🚫 Opting Out of Oryx Build
+      # If you prefer to disable the Oryx build process during deployment, follow these steps:
+      # 1. Remove the SCM_DO_BUILD_DURING_DEPLOYMENT app setting from your Azure App Service Environment variables.
+      # 2. Refer to sample workflows for alternative deployment strategies: https://github.com/Azure/actions-workflow-samples/tree/master/AppService
+      
 
   deploy:
     runs-on: ubuntu-latest
-    needs: backend
+    needs: build
     permissions:
       id-token: write #This is required for requesting the JWT
       contents: read #This is required for actions/checkout
@@ -110,9 +65,9 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_13BBBAA31F524BFEB7F9474E3BE4233F }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_3F0A34CB2B57401D81CBFB056CAE2BB4 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_89F5DFDA51324A86B49A49BB57C81C82 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_BC75EAC79C9343B3AC2FC31FFFBE494B }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_E1A8CB3775554A76AF1AA551430CA2FE }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_826943CC155540DB943D10BCDF98BD59 }}
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
