@@ -4,6 +4,9 @@ import dotenv from "dotenv";
 import path from "path";
 import http from "http";
 import { WebSocketServer } from "ws";
+import { scoreboardWebSocketManager, playbyplayWebSocketManager } from "./services/websocketManager";
+import { dataCache } from "./services/dataCache";
+import { startCleanupTask } from "./services/keyMoments";
 
 dotenv.config({ path: path.join(process.cwd(), ".env") });
 
@@ -43,25 +46,28 @@ app.use("/api/v1", searchRoutes);
 app.use("/api/v1", predictionsRoutes);
 app.use("/api/v1", leagueRoutes);
 
-// WebSockets
-let wss: WebSocketServer;
+// Create HTTP server
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
 
+// Start background services
 if (!isIISNode) {
-  // Local development
-  const server = http.createServer(app);
-  wss = new WebSocketServer({ server });
+  dataCache.startPolling();
+  startCleanupTask();
+  scoreboardWebSocketManager.startBroadcasting();
+  playbyplayWebSocketManager.startBroadcasting();
+}
 
-  server.listen(process.env.PORT || 8000, () => {
-    console.log("Local server running");
+// Start server
+if (isIISNode) {
+  // IISNode provides PORT as a named pipe
+  server.listen(process.env.PORT, () => {
+    console.log('Server running under IISNode/Plesk on pipe:', process.env.PORT);
   });
 } else {
-  // IISNode mode
-  wss = new WebSocketServer({ noServer: true });
-
-  app.on("upgrade", (req: any, socket: any, head: any) => {
-    wss.handleUpgrade(req, socket, head, ws => {
-      wss.emit("connection", ws, req);
-    });
+  // Standard HTTP server for development
+  server.listen(process.env.PORT || 8000, () => {
+    console.log(`Server running on http://localhost:${process.env.PORT || 8000}`);
   });
 }
 
@@ -77,5 +83,5 @@ wss.on("connection", (ws, req: any) => {
   }
 });
 
-// Export app for IISNode
-export default app;
+// Export server for IISNode
+export default server;
