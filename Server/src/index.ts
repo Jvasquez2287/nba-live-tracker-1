@@ -5,10 +5,26 @@ import path from 'path';
 import { WebSocketServer } from 'ws';
 import http from 'http';
 
+// Debug logging for IISNode
+console.log('NBA API Server starting...');
+console.log('Node version:', process.version);
+console.log('Platform:', process.platform);
+console.log('IISNode version:', process.env.IISNODE_VERSION || 'Not running under IISNode');
+console.log('Current working directory:', process.cwd());
+console.log('__dirname:', __dirname);
+
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env') });
 // Also try loading from current working directory (for IISNode compatibility)
 dotenv.config();
+// Additional fallback for IISNode
+if (process.env.IISNODE_VERSION) {
+  dotenv.config({ path: path.join(process.cwd(), '.env') });
+}
+// Additional fallback for IISNode
+if (process.env.IISNODE_VERSION) {
+  dotenv.config({ path: path.join(process.cwd(), '.env') });
+}
 
 // Import services
 import { dataCache } from './services/dataCache';
@@ -58,9 +74,14 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Health check endpoint
+// Health check endpoint - available immediately
 app.get('/', (req, res) => {
-  res.json({ message: 'NBA Live API is running' });
+  res.json({
+    message: 'NBA Live API is running',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    iisnode: !!process.env.IISNODE_VERSION
+  });
 });
 
 // Config check endpoint
@@ -69,6 +90,8 @@ app.get('/api/v1/config/check', (req, res) => {
   res.json({
     groq_configured: !!groqKey,
     groq_key_length: groqKey ? groqKey.length : 0,
+    environment: process.env.NODE_ENV || 'development',
+    iisnode: !!process.env.IISNODE_VERSION
   });
 });
 
@@ -123,13 +146,41 @@ async function startServer() {
   try {
     console.log('Starting NBA data polling and WebSocket broadcasting...');
 
-    // Start background services
-    dataCache.startPolling();
-    startCleanupTask();
-    scoreboardWebSocketManager.startBroadcasting();
-    playbyplayWebSocketManager.startBroadcasting();
-    scoreboardWebSocketManager.startCleanupTask();
-    playbyplayWebSocketManager.startCleanupTask();
+    // For IISNode debugging, don't start background services initially
+    if (!process.env.IISNODE_VERSION) {
+      // Only start background services when not under IISNode
+      try {
+        dataCache.startPolling();
+        console.log('Data cache polling started');
+      } catch (error) {
+        console.error('Failed to start data cache polling:', error);
+      }
+
+      try {
+        startCleanupTask();
+        console.log('Cleanup task started');
+      } catch (error) {
+        console.error('Failed to start cleanup task:', error);
+      }
+
+      try {
+        scoreboardWebSocketManager.startBroadcasting();
+        playbyplayWebSocketManager.startBroadcasting();
+        console.log('WebSocket broadcasting started');
+      } catch (error) {
+        console.error('Failed to start WebSocket broadcasting:', error);
+      }
+
+      try {
+        scoreboardWebSocketManager.startCleanupTask();
+        playbyplayWebSocketManager.startCleanupTask();
+        console.log('WebSocket cleanup tasks started');
+      } catch (error) {
+        console.error('Failed to start WebSocket cleanup tasks:', error);
+      }
+    } else {
+      console.log('Running under IISNode - skipping background services for initial testing');
+    }
 
     // Only listen if not running under IISNode
     if (!process.env.IISNODE_VERSION) {
@@ -141,7 +192,10 @@ async function startServer() {
     }
   } catch (error) {
     console.error('Failed to start server:', error);
-    process.exit(1);
+    // Don't exit in IISNode environment - let IIS handle the error
+    if (!process.env.IISNODE_VERSION) {
+      process.exit(1);
+    }
   }
 }
 

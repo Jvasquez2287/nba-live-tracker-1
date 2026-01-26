@@ -2,6 +2,21 @@
 
 This guide explains how to deploy the Node.js NBA API server using IISNode on Windows Server with IIS.
 
+## Quick Diagnosis
+
+If you're getting 500 errors, run the diagnostic script first:
+
+```cmd
+diagnose_iisnode.bat
+```
+
+This script will check:
+- IISNode installation
+- Node.js availability
+- Application files
+- Basic Node.js functionality
+- IISNode logs
+
 ## Prerequisites
 
 1. **Windows Server** with IIS installed
@@ -36,82 +51,57 @@ Make sure the following IIS features are enabled:
 3. Configure the application pool:
    - Set .NET CLR Version to "No Managed Code"
    - Set Process Model > Identity to an account with appropriate permissions
+   - Ensure "Enable 32-Bit Applications" is set to False (for 64-bit Node.js)
 
-### 4. Environment Variables
+### 4. Verify IISNode Installation
 
-Set the following environment variables in the application pool or system:
+After installing IISNode, verify it's working:
+1. Check that `C:\Program Files\iisnode\iisnode.dll` exists
+2. Check that the IISNode module is registered in IIS
+3. Test with a simple Node.js app first
 
-```powershell
-# Required
-GROQ_API_KEY=your_groq_api_key_here
-NBA_API_PROXY=http://your-proxy-server:port  # Optional, for NBA API proxy
+### 5. Environment Variables
 
-# Optional
-FRONTEND_URL=https://your-frontend-domain.com
-NODE_ENV=production
-```
+Set environment variables at the server level in IIS Manager:
+- `GROQ_API_KEY`: Your Groq API key
+- `NBA_API_PROXY`: Optional proxy for NBA API requests
+- `FRONTEND_URL`: Your frontend domain for CORS
 
-### 5. File Permissions
+### 6. Troubleshooting Common Issues
 
-Ensure the application pool identity has read/write access to:
-- The `server` directory
-- `node_modules` directory
-- Log directories (iisnode folder will be created automatically)
+#### "Internal Server Error" (500)
+- Check IISNode is properly installed
+- Verify application pool is set to "No Managed Code"
+- Check the iisnode folder for log files
+- Ensure Node.js is installed and accessible
 
-### 6. Build the Application
+#### "Cannot find module" errors
+- Run `npm install` in the server directory
+- Ensure `dist/index.js` exists (run `npm run build`)
+- Check file permissions
 
-Before deployment, build the TypeScript application:
+#### WebSocket connections failing
+- Ensure WebSocket Protocol is installed in IIS
+- Check that `<webSocket enabled="true" />` is in web.config
 
-```bash
-cd server
-npm install
-npm run build
-```
+#### Application Startup Issues
 
-## Configuration Details
+If the application fails to start under IISNode:
 
-### web.config Features
+1. **Check the current configuration**: The app now skips background services when running under IISNode for initial testing
+2. **Test with minimal app**: Use `test.js` to verify IISNode can execute Node.js at all
+3. **Check IISNode logs**: Look for detailed error messages in `server/iisnode/`
+4. **Verify Node.js path**: Ensure `C:\Program Files\nodejs\node.exe` exists
 
-The `web.config` file includes:
-
-- **IISNode Handler**: Routes requests to `dist/index.js`
-- **URL Rewriting**: Properly routes API calls and WebSocket connections
-- **WebSocket Support**: Enabled for real-time features
-- **Security Headers**: Basic security headers configured
-- **Static File Handling**: Proper MIME types for assets
-
-### WebSocket Configuration
-
-WebSockets are supported for:
-- Live scoreboard updates: `ws://your-domain/api/v1/ws`
-- Play-by-play updates: `ws://your-domain/api/v1/playbyplay/ws/{gameId}`
-
-## Troubleshooting
-
-### Common Issues
-
-1. **"Cannot find module" errors**:
-   - Ensure `npm install` was run
-   - Check that `dist` folder exists and is up to date
-
-2. **WebSocket connections failing**:
-   - Verify WebSocket Protocol is installed in IIS
-   - Check that `web.config` has WebSocket enabled
-
-3. **Application not starting**:
-   - Check IISNode logs in the `iisnode` folder
-   - Verify Node.js path in `web.config`
-   - Check application pool identity permissions
-
-4. **Environment variables not working**:
-   - Set them at the server level in IIS Manager
-   - Or use `appSettings` in `web.config`
+#### Application not starting
+- Check iisnode logs in `server/iisnode/`
+- Verify Node.js path (IISNode should auto-detect)
+- Check environment variables are set correctly
 
 ### Log Locations
-
-- IISNode logs: `server/iisnode/`
-- Application logs: Check console output in IISNode logs
-- IIS logs: Default IIS logging location
+- IISNode application logs: `server/iisnode/`
+- IIS logs: Check IIS Manager > Logging
+- Application console output: In IISNode logs
 
 ## Monitoring
 
