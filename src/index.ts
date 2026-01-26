@@ -20,10 +20,25 @@ const isIISNode = !!(
   process.env.APP_POOL_ID ||
   process.env.IIS_BIN ||
   process.env.IIS_SITE_NAME ||
-  (process.env.PORT && process.env.PORT !== '8000') // If PORT is set to something other than default
+  process.env.PLESK_BIN ||
+  process.env.PLESK_CONFIG ||
+  (process.cwd() && process.cwd().includes('Inetpub\\vhosts')) || // Plesk path detection
+  (process.cwd() && process.cwd().includes('inetpub/vhosts')) || // Case insensitive
+  (process.env.PORT && process.env.PORT !== '8000') ||
+  (process.env.NODE_ENV === 'production' && !process.env.PORT) || // Production without explicit PORT
+  require.main !== module // If loaded as module (IISNode style)
 );
 
-console.log('Detected IIS/Plesk environment:', isIISNode ? 'Yes' : 'No');
+console.log('Module check - require.main === module:', require.main === module);
+console.log('Environment variables check:');
+console.log('- IISNODE_VERSION:', process.env.IISNODE_VERSION);
+console.log('- APP_POOL_ID:', process.env.APP_POOL_ID);
+console.log('- IIS_BIN:', process.env.IIS_BIN);
+console.log('- IIS_SITE_NAME:', process.env.IIS_SITE_NAME);
+console.log('- PLESK_BIN:', process.env.PLESK_BIN);
+console.log('- PLESK_CONFIG:', process.env.PLESK_CONFIG);
+console.log('- CWD contains vhosts:', process.cwd() && (process.cwd().includes('Inetpub\\vhosts') || process.cwd().includes('inetpub/vhosts')));
+console.log('- NODE_ENV:', process.env.NODE_ENV);
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env') });
