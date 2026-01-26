@@ -42,7 +42,12 @@ jobs:
         run: | 
           source venv/bin/activate
           pytest || echo "No tests found, skipping..."
- 
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-app
+          path: nba-tracker-api/
  
 
   deploy:
