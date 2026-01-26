@@ -32,7 +32,6 @@ import { scoreboardWebSocketManager, playbyplayWebSocketManager } from './servic
 import { startCleanupTask, stopCleanupTask } from './services/keyMoments';
 
 // Import routes
-import scoreboardRoutes from './routes/scoreboard';
 import scheduleRoutes from './routes/schedule';
 import standingsRoutes from './routes/standings';
 import playerRoutes from './routes/players';
@@ -96,7 +95,9 @@ app.get('/api/v1/config/check', (req, res) => {
 });
 
 // API routes
-app.use('/api/v1', scoreboardRoutes);
+console.log('Loading API routes...');
+// app.use('/api/v1', scoreboardRoutes);
+console.log('Scoreboard routes loaded');
 app.use('/api/v1', scheduleRoutes);
 app.use('/api/v1', standingsRoutes);
 app.use('/api/v1', playerRoutes);
@@ -104,6 +105,21 @@ app.use('/api/v1', teamRoutes);
 app.use('/api/v1', searchRoutes);
 app.use('/api/v1', predictionsRoutes);
 app.use('/api/v1', leagueRoutes);
+console.log('All API routes loaded');
+
+// Scoreboard route
+app.get('/api/v1/scoreboard', async (req, res) => {
+  try {
+    const scoreboard = await dataCache.getScoreboard();
+    if (!scoreboard) {
+      return res.status(503).json({ error: 'Scoreboard data not available' });
+    }
+    res.json(scoreboard);
+  } catch (error) {
+    console.error('Error fetching scoreboard:', error);
+    res.status(500).json({ error: 'Failed to fetch scoreboard' });
+  }
+});
 
 // WebSocket handling
 wss.on('connection', (ws, req) => {

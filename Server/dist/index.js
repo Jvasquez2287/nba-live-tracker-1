@@ -33,7 +33,6 @@ const dataCache_1 = require("./services/dataCache");
 const websocketManager_1 = require("./services/websocketManager");
 const keyMoments_1 = require("./services/keyMoments");
 // Import routes
-const scoreboard_1 = __importDefault(require("./routes/scoreboard"));
 const schedule_1 = __importDefault(require("./routes/schedule"));
 const standings_1 = __importDefault(require("./routes/standings"));
 const players_1 = __importDefault(require("./routes/players"));
@@ -85,7 +84,9 @@ app.get('/api/v1/config/check', (req, res) => {
     });
 });
 // API routes
-app.use('/api/v1', scoreboard_1.default);
+console.log('Loading API routes...');
+// app.use('/api/v1', scoreboardRoutes);
+console.log('Scoreboard routes loaded');
 app.use('/api/v1', schedule_1.default);
 app.use('/api/v1', standings_1.default);
 app.use('/api/v1', players_1.default);
@@ -93,6 +94,21 @@ app.use('/api/v1', teams_1.default);
 app.use('/api/v1', search_1.default);
 app.use('/api/v1', predictions_1.default);
 app.use('/api/v1', league_1.default);
+console.log('All API routes loaded');
+// Scoreboard route
+app.get('/api/v1/scoreboard', async (req, res) => {
+    try {
+        const scoreboard = await dataCache_1.dataCache.getScoreboard();
+        if (!scoreboard) {
+            return res.status(503).json({ error: 'Scoreboard data not available' });
+        }
+        res.json(scoreboard);
+    }
+    catch (error) {
+        console.error('Error fetching scoreboard:', error);
+        res.status(500).json({ error: 'Failed to fetch scoreboard' });
+    }
+});
 // WebSocket handling
 wss.on('connection', (ws, req) => {
     const url = req.url;

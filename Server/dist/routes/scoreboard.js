@@ -5,11 +5,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const scoreboard_1 = require("../services/scoreboard");
+const dataCache_1 = require("../services/dataCache");
 const router = express_1.default.Router();
 // GET /api/scoreboard - Get live NBA scores
 router.get('/', async (req, res) => {
     try {
-        const scoreboard = await (0, scoreboard_1.getScoreboard)();
+        console.log('Scoreboard route called');
+        const scoreboard = await dataCache_1.dataCache.getScoreboard();
+        console.log('Scoreboard data:', scoreboard ? 'found' : 'null');
+        if (!scoreboard) {
+            return res.status(503).json({ error: 'Scoreboard data not available' });
+        }
         res.json(scoreboard);
     }
     catch (error) {

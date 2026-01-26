@@ -2,6 +2,50 @@
 
 This guide explains how to deploy the Node.js NBA API server using IISNode on Windows Server with IIS.
 
+## Alternative: Apache/XAMPP Deployment (Current Setup)
+
+Since your system is running XAMPP with Apache, here's the recommended deployment approach:
+
+### Quick Start with Apache
+
+1. **Start the Node.js server:**
+   ```cmd
+   start-server.bat
+   ```
+
+2. **Configure Apache proxy** (optional):
+   - Copy the contents of `apache-proxy.conf` to your Apache configuration
+   - Restart Apache
+   - Access the API through Apache at `http://localhost/api`
+
+3. **Direct access:**
+   - API available at: `http://localhost:8000`
+   - Health check: `http://localhost:8000/`
+
+### Apache Proxy Configuration
+
+If you want to proxy API requests through Apache on port 80:
+
+1. Enable proxy modules in `httpd.conf`:
+   ```
+   LoadModule proxy_module modules/mod_proxy.so
+   LoadModule proxy_http_module modules/mod_proxy_http.so
+   ```
+
+2. Add the proxy configuration from `apache-proxy.conf` to your virtual host
+
+3. Restart Apache
+
+### Managing the Server
+
+- **Start:** `start-server.bat`
+- **Stop:** `stop-server.bat`
+- **Check status:** Look for "NBA-API-Server" in Task Manager
+
+---
+
+## IISNode Deployment (For IIS Servers)
+
 ## Quick Diagnosis
 
 If you're getting 500 errors, run the diagnostic script first:
