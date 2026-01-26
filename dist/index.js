@@ -26,6 +26,8 @@ const isIISNode = !!(process.env.IISNODE_VERSION ||
     process.env.PLESK_CONFIG ||
     (process.cwd() && process.cwd().includes('Inetpub\\vhosts')) || // Plesk path detection
     (process.cwd() && process.cwd().includes('inetpub/vhosts')) || // Case insensitive
+    (process.cwd() && process.cwd().includes('vhosts\\')) || // More general Plesk detection
+    (process.cwd() && process.cwd().includes('/vhosts/')) || // Unix-style paths
     (process.env.PORT && process.env.PORT !== '8000') ||
     (process.env.NODE_ENV === 'production' && !process.env.PORT) || // Production without explicit PORT
     require.main !== module // If loaded as module (IISNode style)
@@ -39,7 +41,10 @@ console.log('- IIS_SITE_NAME:', process.env.IIS_SITE_NAME);
 console.log('- PLESK_BIN:', process.env.PLESK_BIN);
 console.log('- PLESK_CONFIG:', process.env.PLESK_CONFIG);
 console.log('- CWD contains vhosts:', process.cwd() && (process.cwd().includes('Inetpub\\vhosts') || process.cwd().includes('inetpub/vhosts')));
+console.log('- CWD contains vhosts\\ :', process.cwd() && process.cwd().includes('vhosts\\'));
+console.log('- CWD contains /vhosts/:', process.cwd() && process.cwd().includes('/vhosts/'));
 console.log('- NODE_ENV:', process.env.NODE_ENV);
+console.log('isIISNode detection result:', isIISNode);
 // Load environment variables
 dotenv_1.default.config({ path: path_1.default.join(__dirname, '../../.env') });
 // Also try loading from current working directory (for IISNode compatibility)
