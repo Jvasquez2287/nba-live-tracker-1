@@ -194,40 +194,35 @@ async function startServer() {
   try {
     console.log('Starting NBA data polling and WebSocket broadcasting...');
 
-    // For IISNode debugging, don't start background services initially
-    if (!isIISNode) {
-      // Only start background services when not under IISNode
-      try {
-        dataCache.startPolling();
-        console.log('Data cache polling started');
-      } catch (error) {
-        console.error('Failed to start data cache polling:', error);
-      }
+    // Start background services
+    try {
+      dataCache.startPolling();
+      console.log('Data cache polling started');
+    } catch (error) {
+      console.error('Failed to start data cache polling:', error);
+    }
 
-      try {
-        startCleanupTask();
-        console.log('Cleanup task started');
-      } catch (error) {
-        console.error('Failed to start cleanup task:', error);
-      }
+    try {
+      startCleanupTask();
+      console.log('Cleanup task started');
+    } catch (error) {
+      console.error('Failed to start cleanup task:', error);
+    }
 
-      try {
-        scoreboardWebSocketManager.startBroadcasting();
-        playbyplayWebSocketManager.startBroadcasting();
-        console.log('WebSocket broadcasting started');
-      } catch (error) {
-        console.error('Failed to start WebSocket broadcasting:', error);
-      }
+    try {
+      scoreboardWebSocketManager.startBroadcasting();
+      playbyplayWebSocketManager.startBroadcasting();
+      console.log('WebSocket broadcasting started');
+    } catch (error) {
+      console.error('Failed to start WebSocket broadcasting:', error);
+    }
 
-      try {
-        scoreboardWebSocketManager.startCleanupTask();
-        playbyplayWebSocketManager.startCleanupTask();
-        console.log('WebSocket cleanup tasks started');
-      } catch (error) {
-        console.error('Failed to start WebSocket cleanup tasks:', error);
-      }
-    } else {
-      console.log('Running under IISNode - skipping background services for initial testing');
+    try {
+      scoreboardWebSocketManager.startCleanupTask();
+      playbyplayWebSocketManager.startCleanupTask();
+      console.log('WebSocket cleanup tasks started');
+    } catch (error) {
+      console.error('Failed to start WebSocket cleanup tasks:', error);
     }
 
     // Only listen if not running under IISNode

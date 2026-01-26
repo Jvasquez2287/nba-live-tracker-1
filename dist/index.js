@@ -172,42 +172,36 @@ const PORT = process.env.PORT || 8000;
 async function startServer() {
     try {
         console.log('Starting NBA data polling and WebSocket broadcasting...');
-        // For IISNode debugging, don't start background services initially
-        if (!isIISNode) {
-            // Only start background services when not under IISNode
-            try {
-                dataCache_1.dataCache.startPolling();
-                console.log('Data cache polling started');
-            }
-            catch (error) {
-                console.error('Failed to start data cache polling:', error);
-            }
-            try {
-                (0, keyMoments_1.startCleanupTask)();
-                console.log('Cleanup task started');
-            }
-            catch (error) {
-                console.error('Failed to start cleanup task:', error);
-            }
-            try {
-                websocketManager_1.scoreboardWebSocketManager.startBroadcasting();
-                websocketManager_1.playbyplayWebSocketManager.startBroadcasting();
-                console.log('WebSocket broadcasting started');
-            }
-            catch (error) {
-                console.error('Failed to start WebSocket broadcasting:', error);
-            }
-            try {
-                websocketManager_1.scoreboardWebSocketManager.startCleanupTask();
-                websocketManager_1.playbyplayWebSocketManager.startCleanupTask();
-                console.log('WebSocket cleanup tasks started');
-            }
-            catch (error) {
-                console.error('Failed to start WebSocket cleanup tasks:', error);
-            }
+        // Start background services
+        try {
+            dataCache_1.dataCache.startPolling();
+            console.log('Data cache polling started');
         }
-        else {
-            console.log('Running under IISNode - skipping background services for initial testing');
+        catch (error) {
+            console.error('Failed to start data cache polling:', error);
+        }
+        try {
+            (0, keyMoments_1.startCleanupTask)();
+            console.log('Cleanup task started');
+        }
+        catch (error) {
+            console.error('Failed to start cleanup task:', error);
+        }
+        try {
+            websocketManager_1.scoreboardWebSocketManager.startBroadcasting();
+            websocketManager_1.playbyplayWebSocketManager.startBroadcasting();
+            console.log('WebSocket broadcasting started');
+        }
+        catch (error) {
+            console.error('Failed to start WebSocket broadcasting:', error);
+        }
+        try {
+            websocketManager_1.scoreboardWebSocketManager.startCleanupTask();
+            websocketManager_1.playbyplayWebSocketManager.startCleanupTask();
+            console.log('WebSocket cleanup tasks started');
+        }
+        catch (error) {
+            console.error('Failed to start WebSocket cleanup tasks:', error);
         }
         // Only listen if not running under IISNode
         if (!isIISNode) {
