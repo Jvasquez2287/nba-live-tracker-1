@@ -8,6 +8,7 @@ import { WebSocketServer } from "ws";
 // Load environment variables
 dotenv.config({ path: path.join(process.cwd(), ".env") });
 
+// Detect IISNode environment
 const isIISNode = !!process.env.IISNODE_VERSION;
 
 const app = express();
@@ -47,19 +48,24 @@ app.use("/api/v1", leagueRoutes);
 // WebSockets
 let wss: WebSocketServer;
 
+// LOCAL DEVELOPMENT MODE
 if (!isIISNode) {
-  // Local development
   const server = http.createServer(app);
   wss = new WebSocketServer({ server });
 
-  server.listen(process.env.PORT || 8000, () => {
-    console.log("Local server running");
+  const PORT = process.env.PORT || 8000;
+  server.listen(PORT, () => {
+    console.log(`Local server running on http://localhost:${PORT}`);
   });
+
+// IISNODE MODE
 } else {
-  // IISNode mode
+  // Create a dummy server ONLY to receive upgrade events
+  const upgradeServer = http.createServer();
+
   wss = new WebSocketServer({ noServer: true });
 
-  app.on("upgrade", (req: any, socket: any, head: any) => {
+  upgradeServer.on("upgrade", (req: any, socket: any, head: any) => {
     wss.handleUpgrade(req, socket, head, ws => {
       wss.emit("connection", ws, req);
     });
@@ -83,7 +89,7 @@ wss.on("connection", (ws, req: any) => {
   }
 });
 
-// Background tasks (only safe outside IISNode)
+// Background tasks (ONLY safe outside IISNode)
 import { dataCache } from "./services/dataCache";
 import { startCleanupTask, stopCleanupTask } from "./services/keyMoments";
 

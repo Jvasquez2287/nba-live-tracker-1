@@ -9,9 +9,7 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
 const http_1 = __importDefault(require("http"));
 const ws_1 = require("ws");
-const websocketManager_1 = require("./services/websocketManager");
-const dataCache_1 = require("./services/dataCache");
-const keyMoments_1 = require("./services/keyMoments");
+// Load environment variables
 dotenv_1.default.config({ path: path_1.default.join(process.cwd(), ".env") });
 const isIISNode = !!process.env.IISNODE_VERSION;
 const app = (0, express_1.default)();
@@ -43,30 +41,27 @@ app.use("/api/v1", teams_1.default);
 app.use("/api/v1", search_1.default);
 app.use("/api/v1", predictions_1.default);
 app.use("/api/v1", league_1.default);
-// Create HTTP server
-const server = http_1.default.createServer(app);
-const wss = new ws_1.WebSocketServer({ server });
-// Start background services
+// WebSockets
+let wss;
 if (!isIISNode) {
-    dataCache_1.dataCache.startPolling();
-    (0, keyMoments_1.startCleanupTask)();
-    websocketManager_1.scoreboardWebSocketManager.startBroadcasting();
-    websocketManager_1.playbyplayWebSocketManager.startBroadcasting();
-}
-// Start server
-if (isIISNode) {
-    // IISNode provides PORT as a named pipe
-    server.listen(process.env.PORT, () => {
-        console.log('Server running under IISNode/Plesk on pipe:', process.env.PORT);
+    // Local development
+    const server = http_1.default.createServer(app);
+    wss = new ws_1.WebSocketServer({ server });
+    server.listen(process.env.PORT || 8000, () => {
+        console.log("Local server running");
     });
 }
 else {
-    // Standard HTTP server for development
-    server.listen(process.env.PORT || 8000, () => {
-        console.log(`Server running on http://localhost:${process.env.PORT || 8000}`);
+    // IISNode mode
+    wss = new ws_1.WebSocketServer({ noServer: true });
+    app.on("upgrade", (req, socket, head) => {
+        wss.handleUpgrade(req, socket, head, ws => {
+            wss.emit("connection", ws, req);
+        });
     });
 }
 // WebSocket routing
+const websocketManager_1 = require("./services/websocketManager");
 wss.on("connection", (ws, req) => {
     const url = req.url;
     if (url === "/api/v1/ws") {
@@ -77,6 +72,28 @@ wss.on("connection", (ws, req) => {
         websocketManager_1.playbyplayWebSocketManager.handleConnection(ws, gameId);
     }
 });
-// Export server for IISNode
-exports.default = server;
+// Background tasks (only safe outside IISNode)
+const dataCache_1 = require("./services/dataCache");
+const keyMoments_1 = require("./services/keyMoments");
+if (!isIISNode) {
+    dataCache_1.dataCache.startPolling();
+    (0, keyMoments_1.startCleanupTask)();
+    websocketManager_1.scoreboardWebSocketManager.startBroadcasting();
+    websocketManager_1.playbyplayWebSocketManager.startBroadcasting();
+    websocketManager_1.scoreboardWebSocketManager.startCleanupTask();
+    websocketManager_1.playbyplayWebSocketManager.startCleanupTask();
+}
+// Graceful shutdown
+process.on("SIGTERM", async () => {
+    await dataCache_1.dataCache.stopPolling();
+    await (0, keyMoments_1.stopCleanupTask)();
+    await websocketManager_1.scoreboardWebSocketManager.stopCleanupTask();
+    await websocketManager_1.playbyplayWebSocketManager.stopCleanupTask();
+    process.exit(0);
+});
+process.on("SIGINT", async () => {
+    process.exit(0);
+});
+// Export app for IISNode
+exports.default = app;
 //# sourceMappingURL=index.js.map
