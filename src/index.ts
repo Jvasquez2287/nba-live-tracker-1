@@ -53,10 +53,6 @@ dotenv.config();
 if (isIISNode) {
   dotenv.config({ path: path.join(process.cwd(), '.env') });
 }
-// Additional fallback for IISNode
-if (isIISNode) {
-  dotenv.config({ path: path.join(process.cwd(), '.env') });
-}
 
 // Import services
 import { dataCache } from './services/dataCache';
@@ -225,13 +221,17 @@ async function startServer() {
       console.error('Failed to start WebSocket cleanup tasks:', error);
     }
 
-    // Only listen if not running under IISNode
-    if (!isIISNode) {
+    // Start listening on the appropriate port/pipe
+    if (isIISNode) {
+      // IISNode provides PORT as a named pipe
+      server.listen(PORT, () => {
+        console.log('Server running under IISNode/Plesk on pipe:', PORT);
+      });
+    } else {
+      // Standard HTTP server for development
       server.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);
       });
-    } else {
-      console.log('Server configured for IISNode/Plesk');
     }
   } catch (error) {
     console.error('Failed to start server:', error);
