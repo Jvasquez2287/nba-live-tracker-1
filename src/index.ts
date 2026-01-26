@@ -10,19 +10,31 @@ console.log('NBA API Server starting...');
 console.log('Node version:', process.version);
 console.log('Platform:', process.platform);
 console.log('IISNode version:', process.env.IISNODE_VERSION || 'Not running under IISNode');
+console.log('PORT env:', process.env.PORT || 'Not set');
 console.log('Current working directory:', process.cwd());
 console.log('__dirname:', __dirname);
+
+// Check for IIS/Plesk environment
+const isIISNode = !!(
+  process.env.IISNODE_VERSION ||
+  process.env.APP_POOL_ID ||
+  process.env.IIS_BIN ||
+  process.env.IIS_SITE_NAME ||
+  (process.env.PORT && process.env.PORT !== '8000') // If PORT is set to something other than default
+);
+
+console.log('Detected IIS/Plesk environment:', isIISNode ? 'Yes' : 'No');
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env') });
 // Also try loading from current working directory (for IISNode compatibility)
 dotenv.config();
 // Additional fallback for IISNode
-if (process.env.IISNODE_VERSION) {
+if (isIISNode) {
   dotenv.config({ path: path.join(process.cwd(), '.env') });
 }
 // Additional fallback for IISNode
-if (process.env.IISNODE_VERSION) {
+if (isIISNode) {
   dotenv.config({ path: path.join(process.cwd(), '.env') });
 }
 
@@ -79,7 +91,7 @@ app.get('/', (req, res) => {
     message: 'NBA Live API is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
-    iisnode: !!process.env.IISNODE_VERSION
+    iisnode: isIISNode
   });
 });
 
@@ -90,7 +102,7 @@ app.get('/api/v1/config/check', (req, res) => {
     groq_configured: !!groqKey,
     groq_key_length: groqKey ? groqKey.length : 0,
     environment: process.env.NODE_ENV || 'development',
-    iisnode: !!process.env.IISNODE_VERSION
+    iisnode: isIISNode
   });
 });
 
@@ -163,7 +175,7 @@ async function startServer() {
     console.log('Starting NBA data polling and WebSocket broadcasting...');
 
     // For IISNode debugging, don't start background services initially
-    if (!process.env.IISNODE_VERSION) {
+    if (!isIISNode) {
       // Only start background services when not under IISNode
       try {
         dataCache.startPolling();
@@ -199,17 +211,17 @@ async function startServer() {
     }
 
     // Only listen if not running under IISNode
-    if (!process.env.IISNODE_VERSION) {
+    if (!isIISNode) {
       server.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);
       });
     } else {
-      console.log('Server configured for IISNode');
+      console.log('Server configured for IISNode/Plesk');
     }
   } catch (error) {
     console.error('Failed to start server:', error);
     // Don't exit in IISNode environment - let IIS handle the error
-    if (!process.env.IISNODE_VERSION) {
+    if (!isIISNode) {
       process.exit(1);
     }
   }
