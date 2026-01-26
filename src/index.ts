@@ -4,10 +4,8 @@ import dotenv from "dotenv";
 import path from "path";
 import http from "http";
 import { WebSocketServer } from "ws";
-import { scoreboardWebSocketManager, playbyplayWebSocketManager } from "./services/websocketManager";
-import { dataCache } from "./services/dataCache";
-import { startCleanupTask } from "./services/keyMoments";
 
+// Load environment variables
 dotenv.config({ path: path.join(process.cwd(), ".env") });
 
 const isIISNode = !!process.env.IISNODE_VERSION;
@@ -46,32 +44,34 @@ app.use("/api/v1", searchRoutes);
 app.use("/api/v1", predictionsRoutes);
 app.use("/api/v1", leagueRoutes);
 
-// Create HTTP server
-const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+// WebSockets
+let wss: WebSocketServer;
 
-// Start background services
 if (!isIISNode) {
-  dataCache.startPolling();
-  startCleanupTask();
-  scoreboardWebSocketManager.startBroadcasting();
-  playbyplayWebSocketManager.startBroadcasting();
-}
+  // Local development
+  const server = http.createServer(app);
+  wss = new WebSocketServer({ server });
 
-// Start server
-if (isIISNode) {
-  // IISNode provides PORT as a named pipe
-  server.listen(process.env.PORT, () => {
-    console.log('Server running under IISNode/Plesk on pipe:', process.env.PORT);
+  server.listen(process.env.PORT || 8000, () => {
+    console.log("Local server running");
   });
 } else {
-  // Standard HTTP server for development
-  server.listen(process.env.PORT || 8000, () => {
-    console.log(`Server running on http://localhost:${process.env.PORT || 8000}`);
+  // IISNode mode
+  wss = new WebSocketServer({ noServer: true });
+
+  app.on("upgrade", (req: any, socket: any, head: any) => {
+    wss.handleUpgrade(req, socket, head, ws => {
+      wss.emit("connection", ws, req);
+    });
   });
 }
 
 // WebSocket routing
+import {
+  scoreboardWebSocketManager,
+  playbyplayWebSocketManager
+} from "./services/websocketManager";
+
 wss.on("connection", (ws, req: any) => {
   const url = req.url;
 
@@ -83,5 +83,31 @@ wss.on("connection", (ws, req: any) => {
   }
 });
 
-// Export server for IISNode
-export default server;
+// Background tasks (only safe outside IISNode)
+import { dataCache } from "./services/dataCache";
+import { startCleanupTask, stopCleanupTask } from "./services/keyMoments";
+
+if (!isIISNode) {
+  dataCache.startPolling();
+  startCleanupTask();
+  scoreboardWebSocketManager.startBroadcasting();
+  playbyplayWebSocketManager.startBroadcasting();
+  scoreboardWebSocketManager.startCleanupTask();
+  playbyplayWebSocketManager.startCleanupTask();
+}
+
+// Graceful shutdown
+process.on("SIGTERM", async () => {
+  await dataCache.stopPolling();
+  await stopCleanupTask();
+  await scoreboardWebSocketManager.stopCleanupTask();
+  await playbyplayWebSocketManager.stopCleanupTask();
+  process.exit(0);
+});
+
+process.on("SIGINT", async () => {
+  process.exit(0);
+});
+
+// Export app for IISNode
+export default app;
