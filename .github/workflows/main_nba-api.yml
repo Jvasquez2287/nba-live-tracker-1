@@ -34,8 +34,7 @@ jobs:
           pip install black pytest
 
       - name: Format backend with Black
-        run: |
-          cd nba-tracker-api
+        run: | 
           source venv/bin/activate
           black . --check
 
@@ -43,12 +42,7 @@ jobs:
         run: | 
           source venv/bin/activate
           pytest || echo "No tests found, skipping..."
-
-      - name: Upload backend artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-app
-          path: nba-tracker-api/
+ 
  
 
   deploy:
