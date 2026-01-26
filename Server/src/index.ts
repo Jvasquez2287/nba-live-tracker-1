@@ -7,6 +7,8 @@ import http from 'http';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env') });
+// Also try loading from current working directory (for IISNode compatibility)
+dotenv.config();
 
 // Import services
 import { dataCache } from './services/dataCache';
@@ -129,9 +131,14 @@ async function startServer() {
     scoreboardWebSocketManager.startCleanupTask();
     playbyplayWebSocketManager.startCleanupTask();
 
-    server.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
+    // Only listen if not running under IISNode
+    if (!process.env.IISNODE_VERSION) {
+      server.listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
+    } else {
+      console.log('Server configured for IISNode');
+    }
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
@@ -140,4 +147,5 @@ async function startServer() {
 
 startServer();
 
-export default app;
+// Export the server for IISNode
+export default server;

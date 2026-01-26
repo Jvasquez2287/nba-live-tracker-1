@@ -11,6 +11,8 @@ const ws_1 = require("ws");
 const http_1 = __importDefault(require("http"));
 // Load environment variables
 dotenv_1.default.config({ path: path_1.default.join(__dirname, '../../.env') });
+// Also try loading from current working directory (for IISNode compatibility)
+dotenv_1.default.config();
 // Import services
 const dataCache_1 = require("./services/dataCache");
 const websocketManager_1 = require("./services/websocketManager");
@@ -110,9 +112,15 @@ async function startServer() {
         websocketManager_1.playbyplayWebSocketManager.startBroadcasting();
         websocketManager_1.scoreboardWebSocketManager.startCleanupTask();
         websocketManager_1.playbyplayWebSocketManager.startCleanupTask();
-        server.listen(PORT, () => {
-            console.log(`Server running on http://localhost:${PORT}`);
-        });
+        // Only listen if not running under IISNode
+        if (!process.env.IISNODE_VERSION) {
+            server.listen(PORT, () => {
+                console.log(`Server running on http://localhost:${PORT}`);
+            });
+        }
+        else {
+            console.log('Server configured for IISNode');
+        }
     }
     catch (error) {
         console.error('Failed to start server:', error);
@@ -120,5 +128,6 @@ async function startServer() {
     }
 }
 startServer();
-exports.default = app;
+// Export the server for IISNode
+exports.default = server;
 //# sourceMappingURL=index.js.map
