@@ -1,294 +1,188 @@
-// src/index.ts
-import express, { Request, Response } from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import path from 'path';
-import http from 'http';
-import { WebSocketServer } from 'ws';
-
-// Services
-import { dataCache } from './services/dataCache';
-import {
-  scoreboardWebSocketManager,
-  playbyplayWebSocketManager,
-} from './services/websocketManager';
-import { startCleanupTask, stopCleanupTask } from './services/keyMoments';
-
-// Routes
-import scoreboardRoutes from './routes/scoreboard';
-import scheduleRoutes from './routes/schedule';
-import standingsRoutes from './routes/standings';
-import playersRoutes from './routes/players';
-import teamsRoutes from './routes/teams';
-import searchRoutes from './routes/search';
-import predictionsRoutes from './routes/predictions';
-import leagueRoutes from './routes/league';
-
-// --------------------------------------------------
-// Environment & diagnostics
-// --------------------------------------------------
-
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const cors_1 = __importDefault(require("cors"));
+const dotenv_1 = __importDefault(require("dotenv"));
+const path_1 = __importDefault(require("path"));
+const ws_1 = require("ws");
+const http_1 = __importDefault(require("http"));
+// Debug logging for IISNode
 console.log('NBA API Server starting...');
 console.log('Node version:', process.version);
 console.log('Platform:', process.platform);
 console.log('IISNode version:', process.env.IISNODE_VERSION || 'Not running under IISNode');
 console.log('Current working directory:', process.cwd());
 console.log('__dirname:', __dirname);
-
-// Load env from site root (works for IISNode + local)
-dotenv.config({ path: path.join(process.cwd(), '.env') });
-
-// Optional fallback to project root (for local dev with src/dist)
-dotenv.config({ path: path.join(__dirname, '../../.env') });
-
-// --------------------------------------------------
-// App setup
-// --------------------------------------------------
-
-const app = express();
-
-// Basic middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// CORS
-const frontendUrl = process.env.FRONTEND_URL || '*';
-let allowedOrigins: string[] | string = '*';
-
-if (frontendUrl === '*') {
-  allowedOrigins = '*';
-} else {
-  const origins = new Set<string>([frontendUrl]);
-
-  if (!frontendUrl.includes('localhost') && !frontendUrl.includes('127.0.0.1')) {
-    [
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:5173',
-    ].forEach(o => origins.add(o));
-  }
-
-  allowedOrigins = Array.from(origins);
+// Load environment variables
+dotenv_1.default.config({ path: path_1.default.join(__dirname, '../../.env') });
+// Also try loading from current working directory (for IISNode compatibility)
+dotenv_1.default.config();
+// Additional fallback for IISNode
+if (process.env.IISNODE_VERSION) {
+    dotenv_1.default.config({ path: path_1.default.join(process.cwd(), '.env') });
 }
-
-app.use(
-  cors({
+// Additional fallback for IISNode
+if (process.env.IISNODE_VERSION) {
+    dotenv_1.default.config({ path: path_1.default.join(process.cwd(), '.env') });
+}
+// Import services
+const dataCache_1 = require("./services/dataCache");
+const websocketManager_1 = require("./services/websocketManager");
+const keyMoments_1 = require("./services/keyMoments");
+// Import routes
+const scoreboard_1 = __importDefault(require("./routes/scoreboard"));
+const schedule_1 = __importDefault(require("./routes/schedule"));
+const standings_1 = __importDefault(require("./routes/standings"));
+const players_1 = __importDefault(require("./routes/players"));
+const teams_1 = __importDefault(require("./routes/teams"));
+const search_1 = __importDefault(require("./routes/search"));
+const predictions_1 = __importDefault(require("./routes/predictions"));
+const league_1 = __importDefault(require("./routes/league"));
+const app = (0, express_1.default)();
+const server = http_1.default.createServer(app);
+const wss = new ws_1.WebSocketServer({ server });
+// Middleware
+app.use(express_1.default.json());
+app.use(express_1.default.urlencoded({ extended: true }));
+// CORS configuration
+const frontendUrl = process.env.FRONTEND_URL || '*';
+let allowedOrigins;
+if (frontendUrl === '*') {
+    allowedOrigins = ['*'];
+}
+else {
+    allowedOrigins = [frontendUrl];
+    if (!frontendUrl.includes('localhost') && !frontendUrl.includes('127.0.0.1')) {
+        allowedOrigins.push('http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:5173');
+    }
+}
+app.use((0, cors_1.default)({
     origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-);
-
-// --------------------------------------------------
-// Health & config endpoints
-// --------------------------------------------------
-
-app.get('/', (req: Request, res: Response) => {
-  res.json({
-    message: 'NBA Live API is running',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    iisnode: !!process.env.IISNODE_VERSION,
-  });
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+// Health check endpoint - available immediately
+app.get('/', (req, res) => {
+    res.json({
+        message: 'NBA Live API is running',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development',
+        iisnode: !!process.env.IISNODE_VERSION
+    });
 });
-
-app.get('/api/v1/config/check', (req: Request, res: Response) => {
-  const groqKey = process.env.GROQ_API_KEY;
-  res.json({
-    groq_configured: !!groqKey,
-    groq_key_length: groqKey ? groqKey.length : 0,
-    environment: process.env.NODE_ENV || 'development',
-    iisnode: !!process.env.IISNODE_VERSION,
-  });
+// Config check endpoint
+app.get('/api/v1/config/check', (req, res) => {
+    const groqKey = process.env.GROQ_API_KEY;
+    res.json({
+        groq_configured: !!groqKey,
+        groq_key_length: groqKey ? groqKey.length : 0,
+        environment: process.env.NODE_ENV || 'development',
+        iisnode: !!process.env.IISNODE_VERSION
+    });
 });
-
-// --------------------------------------------------
 // API routes
-// --------------------------------------------------
-
-app.use('/api/v1', scoreboardRoutes);
-app.use('/api/v1', scheduleRoutes);
-app.use('/api/v1', standingsRoutes);
-app.use('/api/v1', playersRoutes);
-app.use('/api/v1', teamsRoutes);
-app.use('/api/v1', searchRoutes);
-app.use('/api/v1', predictionsRoutes);
-app.use('/api/v1', leagueRoutes);
-
-// --------------------------------------------------
-// WebSockets
-// --------------------------------------------------
-
-let server: http.Server | null = null;
-let wss: WebSocketServer | null = null;
-
-const isIISNode = !!process.env.IISNODE_VERSION;
-
-// Local dev: normal HTTP server + WebSocketServer bound to it
-if (!isIISNode) {
-  server = http.createServer(app);
-  wss = new WebSocketServer({ server });
-
-  wss.on('connection', (ws, req) => {
-    const url = req.url || '';
-
+app.use('/api/v1', scoreboard_1.default);
+app.use('/api/v1', schedule_1.default);
+app.use('/api/v1', standings_1.default);
+app.use('/api/v1', players_1.default);
+app.use('/api/v1', teams_1.default);
+app.use('/api/v1', search_1.default);
+app.use('/api/v1', predictions_1.default);
+app.use('/api/v1', league_1.default);
+// WebSocket handling
+wss.on('connection', (ws, req) => {
+    const url = req.url;
     if (url === '/api/v1/ws') {
-      scoreboardWebSocketManager.handleConnection(ws);
-    } else if (url.startsWith('/api/v1/playbyplay/ws/')) {
-      const gameId = url.split('/').pop();
-      if (gameId) {
-        playbyplayWebSocketManager.handleConnection(ws, gameId);
-      }
+        websocketManager_1.scoreboardWebSocketManager.handleConnection(ws);
     }
-  });
-} else {
-  // IISNode: it wraps `app` in its own HTTP server.
-  // Use noServer mode and hook into upgrade events.
-  wss = new WebSocketServer({ noServer: true });
-
-  app.on('upgrade', (req: any, socket: any, head: any) => {
-    const url = req.url || '';
-
-    if (!url.startsWith('/api/v1/ws') && !url.startsWith('/api/v1/playbyplay/ws/')) {
-      socket.destroy();
-      return;
+    else if (url?.startsWith('/api/v1/playbyplay/ws/')) {
+        const gameId = url.split('/').pop();
+        if (gameId) {
+            websocketManager_1.playbyplayWebSocketManager.handleConnection(ws, gameId);
+        }
     }
-
-    wss!.handleUpgrade(req, socket, head, ws => {
-      wss!.emit('connection', ws, req);
-    });
-  });
-
-  wss.on('connection', (ws, req: any) => {
-    const url = req.url || '';
-
-    if (url === '/api/v1/ws') {
-      scoreboardWebSocketManager.handleConnection(ws);
-    } else if (url.startsWith('/api/v1/playbyplay/ws/')) {
-      const gameId = url.split('/').pop();
-      if (gameId) {
-        playbyplayWebSocketManager.handleConnection(ws, gameId);
-      }
-    }
-  });
-}
-
-// --------------------------------------------------
-// Background tasks
-// --------------------------------------------------
-
-async function startBackgroundTasks() {
-  console.log('Starting NBA data polling and WebSocket broadcasting...');
-
-  try {
-    dataCache.startPolling();
-    console.log('Data cache polling started');
-  } catch (error) {
-    console.error('Failed to start data cache polling:', error);
-  }
-
-  try {
-    startCleanupTask();
-    console.log('Key moments cleanup task started');
-  } catch (error) {
-    console.error('Failed to start key moments cleanup task:', error);
-  }
-
-  try {
-    scoreboardWebSocketManager.startBroadcasting();
-    playbyplayWebSocketManager.startBroadcasting();
-    console.log('WebSocket broadcasting started');
-  } catch (error) {
-    console.error('Failed to start WebSocket broadcasting:', error);
-  }
-
-  try {
-    scoreboardWebSocketManager.startCleanupTask();
-    playbyplayWebSocketManager.startCleanupTask();
-    console.log('WebSocket cleanup tasks started');
-  } catch (error) {
-    console.error('Failed to start WebSocket cleanup tasks:', error);
-  }
-}
-
-async function stopBackgroundTasks() {
-  try {
-    await dataCache.stopPolling();
-  } catch (e) {
-    console.error('Error stopping data cache polling:', e);
-  }
-
-  try {
-    await stopCleanupTask();
-  } catch (e) {
-    console.error('Error stopping key moments cleanup task:', e);
-  }
-
-  try {
-    await scoreboardWebSocketManager.stopCleanupTask();
-    await playbyplayWebSocketManager.stopCleanupTask();
-  } catch (e) {
-    console.error('Error stopping WebSocket cleanup tasks:', e);
-  }
-}
-
-// --------------------------------------------------
-// Startup & shutdown
-// --------------------------------------------------
-
-const PORT = process.env.PORT || 8000;
-
-async function startServer() {
-  try {
-    if (!isIISNode) {
-      await startBackgroundTasks();
-
-      server!.listen(PORT, () => {
-        console.log(`Server running on http://localhost:${PORT}`);
-      });
-    } else {
-      console.log('Running under IISNode - background tasks can be enabled via separate worker if desired');
-    }
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    if (!isIISNode) {
-      process.exit(1);
-    }
-  }
-}
-
+});
+// Graceful shutdown handling
 process.on('SIGTERM', async () => {
-  console.log('Shutting down gracefully (SIGTERM)...');
-  await stopBackgroundTasks();
-  if (server) {
+    console.log('Shutting down gracefully...');
+    await dataCache_1.dataCache.stopPolling();
+    await (0, keyMoments_1.stopCleanupTask)();
+    await websocketManager_1.scoreboardWebSocketManager.stopCleanupTask();
+    await websocketManager_1.playbyplayWebSocketManager.stopCleanupTask();
     server.close(() => {
-      console.log('HTTP server closed');
-      process.exit(0);
+        console.log('Server closed');
+        process.exit(0);
     });
-  } else {
-    process.exit(0);
-  }
 });
-
 process.on('SIGINT', async () => {
-  console.log('Received SIGINT, shutting down gracefully...');
-  await stopBackgroundTasks();
-  if (server) {
-    server.close(() => {
-      console.log('HTTP server closed');
-      process.exit(0);
-    });
-  } else {
+    console.log('Received SIGINT, shutting down gracefully...');
     process.exit(0);
-  }
 });
-
+// Start server
+const PORT = process.env.PORT || 8000;
+async function startServer() {
+    try {
+        console.log('Starting NBA data polling and WebSocket broadcasting...');
+        // For IISNode debugging, don't start background services initially
+        if (!process.env.IISNODE_VERSION) {
+            // Only start background services when not under IISNode
+            try {
+                dataCache_1.dataCache.startPolling();
+                console.log('Data cache polling started');
+            }
+            catch (error) {
+                console.error('Failed to start data cache polling:', error);
+            }
+            try {
+                (0, keyMoments_1.startCleanupTask)();
+                console.log('Cleanup task started');
+            }
+            catch (error) {
+                console.error('Failed to start cleanup task:', error);
+            }
+            try {
+                websocketManager_1.scoreboardWebSocketManager.startBroadcasting();
+                websocketManager_1.playbyplayWebSocketManager.startBroadcasting();
+                console.log('WebSocket broadcasting started');
+            }
+            catch (error) {
+                console.error('Failed to start WebSocket broadcasting:', error);
+            }
+            try {
+                websocketManager_1.scoreboardWebSocketManager.startCleanupTask();
+                websocketManager_1.playbyplayWebSocketManager.startCleanupTask();
+                console.log('WebSocket cleanup tasks started');
+            }
+            catch (error) {
+                console.error('Failed to start WebSocket cleanup tasks:', error);
+            }
+        }
+        else {
+            console.log('Running under IISNode - skipping background services for initial testing');
+        }
+        // Only listen if not running under IISNode
+        if (!process.env.IISNODE_VERSION) {
+            server.listen(PORT, () => {
+                console.log(`Server running on http://localhost:${PORT}`);
+            });
+        }
+        else {
+            console.log('Server configured for IISNode');
+        }
+    }
+    catch (error) {
+        console.error('Failed to start server:', error);
+        // Don't exit in IISNode environment - let IIS handle the error
+        if (!process.env.IISNODE_VERSION) {
+            process.exit(1);
+        }
+    }
+}
 startServer();
-
-// --------------------------------------------------
-// Export for IISNode
-// --------------------------------------------------
-
-export default app;
+// Export the server for IISNode
+exports.default = server;
+//# sourceMappingURL=index.js.map
