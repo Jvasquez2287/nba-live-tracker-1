@@ -14,6 +14,7 @@ export declare class ScoreboardWebSocketManager {
     private sendInitialData;
     disconnect(websocket: WebSocket): void;
     handleConnection(websocket: WebSocket): void;
+    private formatGameResponse;
     private hasGameDataChanged;
     broadcastUpdates(): Promise<void>;
     startBroadcasting(): void;

@@ -3,6 +3,9 @@ import { dataCache } from '../services/dataCache';
 
 const router = express.Router();
 
+// Python API base URL (nba-tracker-api)
+const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://nba-v1.m-api.net:8000/api/v1';
+
 // Simple prediction algorithm based on team record
 function calculatePrediction(homeTeam: any, awayTeam: any): { prediction: string; confidence: number } {
   const homeWinPct = homeTeam.wins ? homeTeam.wins / (homeTeam.wins + homeTeam.losses) : 0.5;

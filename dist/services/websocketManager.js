@@ -22,8 +22,10 @@ class ScoreboardWebSocketManager {
     connect(websocket) {
         this.activeConnections.add(websocket);
         console.log(`[Scoreboard WS] New client connected (total: ${this.activeConnections.size})`);
-        // Send initial data to new client
-        this.sendInitialData(websocket);
+        // Send initial data to new client (don't await, fire and forget)
+        this.sendInitialData(websocket).catch(err => {
+            console.error('[Scoreboard WS] Error in sendInitialData:', err);
+        });
         // Handle client disconnect
         websocket.on('close', () => {
             this.disconnect(websocket);
@@ -45,11 +47,13 @@ class ScoreboardWebSocketManager {
                 const liveGames = allGames.filter((g) => g.gameStatus === 2);
                 // If no live games, use upcoming games (gameStatus === 1)
                 let gamesToSend = liveGames.length > 0 ? liveGames : allGames.filter((g) => g.gameStatus === 1);
+                // Format games to match response schema
+                const formattedGames = this.formatGameResponse(gamesToSend);
                 // Send the filtered scoreboard data
                 const responseData = {
                     scoreboard: {
                         gameDate: scoreboardData.scoreboard?.gameDate || '',
-                        games: gamesToSend
+                        games: formattedGames
                     }
                 };
                 websocket.send(JSON.stringify(responseData));
@@ -78,6 +82,37 @@ class ScoreboardWebSocketManager {
     }
     handleConnection(websocket) {
         this.connect(websocket);
+    }
+    formatGameResponse(games) {
+        return games.map((game) => ({
+            gameId: game.gameId,
+            gameStatus: game.gameStatus || 0,
+            gameStatusText: game.gameStatusText || '',
+            period: game.period || 0,
+            gameClock: game.gameClock || null,
+            gameTimeUTC: game.gameTimeUTC || '',
+            homeTeam: {
+                teamId: game.homeTeam?.teamId,
+                teamName: game.homeTeam?.teamName || '',
+                teamCity: game.homeTeam?.teamCity || '',
+                teamTricode: game.homeTeam?.teamTricode || '',
+                wins: game.homeTeam?.wins || 0,
+                losses: game.homeTeam?.losses || 0,
+                score: game.homeTeam?.score || 0,
+                timeoutsRemaining: game.homeTeam?.timeoutsRemaining || 0
+            },
+            awayTeam: {
+                teamId: game.awayTeam?.teamId,
+                teamName: game.awayTeam?.teamName || '',
+                teamCity: game.awayTeam?.teamCity || '',
+                teamTricode: game.awayTeam?.teamTricode || '',
+                wins: game.awayTeam?.wins || 0,
+                losses: game.awayTeam?.losses || 0,
+                score: game.awayTeam?.score || 0,
+                timeoutsRemaining: game.awayTeam?.timeoutsRemaining || 0
+            },
+            gameLeaders: game.gameLeaders || null
+        }));
     }
     hasGameDataChanged(newGames, oldGames) {
         const currentTime = Date.now();
@@ -122,10 +157,12 @@ class ScoreboardWebSocketManager {
             }
             this.currentGames = gamesToSend;
             console.log(`[Scoreboard WS] Broadcasting updates for ${gamesToSend.length} games (${liveGames.length > 0 ? 'live' : 'upcoming'})`);
+            // Format games to match response schema
+            const formattedGames = this.formatGameResponse(gamesToSend);
             const broadcastData = {
                 scoreboard: {
                     gameDate: scoreboardData.scoreboard?.gameDate || '',
-                    games: gamesToSend
+                    games: formattedGames
                 }
             };
             const disconnectedClients = [];

@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const dataCache_1 = require("../services/dataCache");
 const router = express_1.default.Router();
+// Python API base URL (nba-tracker-api)
+const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://nba-v1.m-api.net:8000/api/v1';
 // Simple prediction algorithm based on team record
 function calculatePrediction(homeTeam, awayTeam) {
     const homeWinPct = homeTeam.wins ? homeTeam.wins / (homeTeam.wins + homeTeam.losses) : 0.5;
