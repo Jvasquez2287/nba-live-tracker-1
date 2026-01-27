@@ -57,54 +57,33 @@ app.use("/api/v1", searchRoutes);
 app.use("/api/v1", predictionsRoutes);
 app.use("/api/v1", leagueRoutes);
 
-// WebSockets
-let wss: WebSocketServer;
-
-// LOCAL DEVELOPMENT MODE
-if (!isIISNode) {
-  const server = http.createServer(app);
-  wss = new WebSocketServer({ server });
-
-  const PORT = process.env.PORT || 8000;
-  server.listen(PORT, () => {
-    console.log(`Local server running on http://localhost:${PORT}`);
-  });
-
-// IISNODE MODE
-} else {
-  // Create a dummy server ONLY to receive upgrade events
-  const upgradeServer = http.createServer();
-
-  wss = new WebSocketServer({ noServer: true });
-
-  upgradeServer.on("upgrade", (req: any, socket: any, head: any) => {
-    wss.handleUpgrade(req, socket, head, ws => {
-      wss.emit("connection", ws, req);
-    });
-  });
-}
-
-// WebSocket routing
+// Import WebSocket managers and services
 import {
   scoreboardWebSocketManager,
   playbyplayWebSocketManager
 } from "./services/websocketManager";
+import { dataCache } from "./services/dataCache";
+import { startCleanupTask, stopCleanupTask } from "./services/keyMoments";
 
+// Create HTTP server and WebSocket server
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
+
+// WebSocket connection handling
 wss.on("connection", (ws, req: any) => {
   const url = req.url;
 
   if (url === "/api/v1/ws") {
     scoreboardWebSocketManager.handleConnection(ws);
-  } else if (url.startsWith("/api/v1/playbyplay/ws/")) {
+  } else if (url?.startsWith("/api/v1/playbyplay/ws/")) {
     const gameId = url.split("/").pop();
-    playbyplayWebSocketManager.handleConnection(ws, gameId);
+    if (gameId) {
+      playbyplayWebSocketManager.handleConnection(ws, gameId);
+    }
   }
 });
 
-// Background tasks (ONLY safe outside IISNode)
-import { dataCache } from "./services/dataCache";
-import { startCleanupTask, stopCleanupTask } from "./services/keyMoments";
-
+// Start background tasks only in development
 if (!isIISNode) {
   dataCache.startPolling();
   startCleanupTask();
@@ -114,18 +93,35 @@ if (!isIISNode) {
   playbyplayWebSocketManager.startCleanupTask();
 }
 
+// Start server
+const PORT = process.env.PORT || 8000;
+
+if (isIISNode) {
+  // IISNode provides PORT as a named pipe
+  server.listen(PORT, () => {
+    console.log('Server running under IISNode on pipe:', PORT);
+  });
+} else {
+  // Development mode
+  server.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
 // Graceful shutdown
 process.on("SIGTERM", async () => {
   await dataCache.stopPolling();
   await stopCleanupTask();
   await scoreboardWebSocketManager.stopCleanupTask();
   await playbyplayWebSocketManager.stopCleanupTask();
+  server.close();
   process.exit(0);
 });
 
 process.on("SIGINT", async () => {
+  server.close();
   process.exit(0);
 });
 
-// Export app for IISNode
-export default app;
+// Export server for IISNode
+export default server;
