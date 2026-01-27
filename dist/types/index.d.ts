@@ -60,6 +60,7 @@ export interface GameLeaders {
 }
 export interface LiveGame {
     gameId: string;
+    gameDate?: string;
     gameStatus: number;
     gameStatusText: string;
     period: number;

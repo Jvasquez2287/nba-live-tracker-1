@@ -91,6 +91,7 @@ import teamRoutes from "./routes/teams";
 import searchRoutes from "./routes/search";
 import predictionsRoutes from "./routes/predictions";
 import leagueRoutes from "./routes/league";
+import scoreboardRoutes from "./routes/scoreboard";
 
 app.use("/api/v1", scheduleRoutes);
 app.use("/api/v1", standingsRoutes);
@@ -99,6 +100,7 @@ app.use("/api/v1", teamRoutes);
 app.use("/api/v1", searchRoutes);
 app.use("/api/v1", predictionsRoutes);
 app.use("/api/v1", leagueRoutes);
+app.use("/api/v1/scoreboard", scoreboardRoutes);
 
 // Import WebSocket managers and services
 import {
