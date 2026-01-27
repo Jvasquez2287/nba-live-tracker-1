@@ -2,8 +2,8 @@ import express from 'express';
 
 const router = express.Router();
 
-// Placeholder routes for teams
-router.get('/', (req, res) => {
+// GET /api/v1/teams
+router.get('/teams', (req, res) => {
   res.json({ message: 'Teams endpoint not implemented yet' });
 });
 

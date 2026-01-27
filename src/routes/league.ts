@@ -2,8 +2,8 @@ import express from 'express';
 
 const router = express.Router();
 
-// Placeholder routes for league
-router.get('/', (req, res) => {
+// GET /api/v1/league
+router.get('/league', (req, res) => {
   res.json({ message: 'League endpoint not implemented yet' });
 });
 

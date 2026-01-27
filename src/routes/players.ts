@@ -2,8 +2,8 @@ import express from 'express';
 
 const router = express.Router();
 
-// Placeholder routes for players
-router.get('/', (req, res) => {
+// GET /api/v1/players
+router.get('/players', (req, res) => {
   res.json({ message: 'Players endpoint not implemented yet' });
 });
 
