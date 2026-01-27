@@ -64,19 +64,35 @@ router.get('/schedule/date/:date', async (req, res) => {
             return res.json({
                 date: dateParam,
                 games: [],
-                message: 'No games scheduled for this date'
+                total: 0,
+                message: 'No games scheduled for this date',
+                cacheStatus: 'empty'
             });
         }
-        // Filter games by date
-        // gameDate format from NBA API is typically YYYYMMDD
-        const formattedDate = dateParam.replace(/-/g, '');
+        // Format date for matching
+        // Input: YYYY-MM-DD (e.g., 2026-01-25)
+        // NBA API format: YYYYMMDD (e.g., 20260125)
+        const formattedDateNoHyphens = dateParam.replace(/-/g, ''); // 20260125
+        // Also support matching by gameTimeUTC which contains full ISO datetime
+        const datePrefix = dateParam.substring(0, 10); // Extract YYYY-MM-DD part
         const filteredGames = scoreboard.games.filter((game) => {
-            // Try to match by gameDate field if it exists
-            if (game.gameDate === dateParam || game.gameDate === formattedDate)
+            // Check gameDate field (could be YYYY-MM-DD or YYYYMMDD)
+            if (game.gameDate) {
+                const normalizedGameDate = String(game.gameDate).replace(/-/g, '');
+                if (normalizedGameDate === formattedDateNoHyphens)
+                    return true;
+                if (game.gameDate === dateParam)
+                    return true;
+            }
+            // Check gameTimeUTC (ISO format: 2026-01-25T20:00:00Z)
+            if (game.gameTimeUTC && game.gameTimeUTC.substring(0, 10) === datePrefix)
                 return true;
-            // Try to match by gameId pattern (first 8 digits contain date info)
-            if (game.gameId && game.gameId.substring(0, 8) === formattedDate.substring(0, 8))
-                return true;
+            // Check by gameId pattern (first 8 digits: YYYYMMDD)
+            if (game.gameId) {
+                const gameIdDatePart = String(game.gameId).substring(0, 8);
+                if (gameIdDatePart === formattedDateNoHyphens)
+                    return true;
+            }
             return false;
         });
         const schedule = {
@@ -99,13 +115,15 @@ router.get('/schedule/date/:date', async (req, res) => {
                 period: game.period,
                 gameClock: game.gameClock
             })),
-            total: filteredGames.length
+            total: filteredGames.length,
+            allGamesDate: scoreboard.gameDate,
+            message: filteredGames.length === 0 ? 'No games scheduled for this date' : undefined
         };
         res.json(schedule);
     }
     catch (error) {
         console.error('Error fetching schedule by date:', error);
-        res.status(500).json({ error: 'Failed to fetch schedule by date' });
+        res.status(500).json({ error: 'Failed to fetch schedule by date', details: error instanceof Error ? error.message : String(error) });
     }
 });
 exports.default = router;
