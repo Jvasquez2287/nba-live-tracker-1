@@ -33,9 +33,23 @@ export class ScoreboardWebSocketManager {
 
   private async sendInitialData(websocket: WebSocket): Promise<void> {
     try {
+      if (websocket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
       const scoreboardData = await dataCache.getScoreboard();
-      if (scoreboardData && websocket.readyState === WebSocket.OPEN) {
+
+      if (scoreboardData) {
+        // Send the full scoreboard data
         websocket.send(JSON.stringify(scoreboardData));
+      } else {
+        // Send empty structure if no data available yet
+        websocket.send(JSON.stringify({
+          scoreboard: {
+            gameDate: '',
+            games: []
+          }
+        }));
       }
     } catch (error) {
       console.error('[Scoreboard WS] Error sending initial data:', error);
@@ -237,9 +251,21 @@ export class PlaybyplayWebSocketManager {
 
   private async sendInitialData(gameId: string, websocket: WebSocket): Promise<void> {
     try {
+      if (websocket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
       const playbyplayData = await dataCache.getPlaybyplay(gameId);
-      if (playbyplayData && websocket.readyState === WebSocket.OPEN) {
+
+      if (playbyplayData) {
+        // Send the full play-by-play data
         websocket.send(JSON.stringify(playbyplayData));
+      } else {
+        // Send empty structure if no data available yet
+        websocket.send(JSON.stringify({
+          game_id: gameId,
+          plays: []
+        }));
       }
     } catch (error) {
       console.error(`[PlayByPlay WS] Error sending initial data for game ${gameId}:`, error);

@@ -35,9 +35,22 @@ class ScoreboardWebSocketManager {
     }
     async sendInitialData(websocket) {
         try {
+            if (websocket.readyState !== ws_1.default.OPEN) {
+                return;
+            }
             const scoreboardData = await dataCache_1.dataCache.getScoreboard();
-            if (scoreboardData && websocket.readyState === ws_1.default.OPEN) {
+            if (scoreboardData) {
+                // Send the full scoreboard data
                 websocket.send(JSON.stringify(scoreboardData));
+            }
+            else {
+                // Send empty structure if no data available yet
+                websocket.send(JSON.stringify({
+                    scoreboard: {
+                        gameDate: '',
+                        games: []
+                    }
+                }));
             }
         }
         catch (error) {
@@ -207,9 +220,20 @@ class PlaybyplayWebSocketManager {
     }
     async sendInitialData(gameId, websocket) {
         try {
+            if (websocket.readyState !== ws_1.default.OPEN) {
+                return;
+            }
             const playbyplayData = await dataCache_1.dataCache.getPlaybyplay(gameId);
-            if (playbyplayData && websocket.readyState === ws_1.default.OPEN) {
+            if (playbyplayData) {
+                // Send the full play-by-play data
                 websocket.send(JSON.stringify(playbyplayData));
+            }
+            else {
+                // Send empty structure if no data available yet
+                websocket.send(JSON.stringify({
+                    game_id: gameId,
+                    plays: []
+                }));
             }
         }
         catch (error) {
