@@ -81,6 +81,82 @@ router.get('/players', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch players' });
     }
 });
+// GET /api/v1/players/league-roster - Get full league roster
+router.get('/players/league-roster', async (req, res) => {
+    try {
+        const scoreboardData = await dataCache_1.dataCache.getScoreboard();
+        const scoreboard = scoreboardData?.scoreboard;
+        if (!scoreboard || !scoreboard.games) {
+            return res.json({
+                total: 0,
+                players: [],
+                teams: {}
+            });
+        }
+        // Extract all players from games
+        const playersMap = new Map();
+        const teamRosters = {};
+        scoreboard.games.forEach((game) => {
+            // Home team game leaders
+            if (game.gameLeaders?.homeLeaders) {
+                const leader = game.gameLeaders.homeLeaders;
+                const teamTricode = game.homeTeam?.teamTricode;
+                if (leader.personId && !playersMap.has(leader.personId)) {
+                    const playerData = {
+                        playerId: leader.personId,
+                        name: leader.name || 'Unknown',
+                        team: teamTricode,
+                        teamId: game.homeTeam?.teamId,
+                        teamName: game.homeTeam?.teamName,
+                        points: leader.points || 0,
+                        rebounds: leader.rebounds || 0,
+                        assists: leader.assists || 0,
+                        position: leader.position || 'Unknown'
+                    };
+                    playersMap.set(leader.personId, playerData);
+                    if (!teamRosters[teamTricode]) {
+                        teamRosters[teamTricode] = [];
+                    }
+                    teamRosters[teamTricode].push(playerData);
+                }
+            }
+            // Away team game leaders
+            if (game.gameLeaders?.awayLeaders) {
+                const leader = game.gameLeaders.awayLeaders;
+                const teamTricode = game.awayTeam?.teamTricode;
+                if (leader.personId && !playersMap.has(leader.personId)) {
+                    const playerData = {
+                        playerId: leader.personId,
+                        name: leader.name || 'Unknown',
+                        team: teamTricode,
+                        teamId: game.awayTeam?.teamId,
+                        teamName: game.awayTeam?.teamName,
+                        points: leader.points || 0,
+                        rebounds: leader.rebounds || 0,
+                        assists: leader.assists || 0,
+                        position: leader.position || 'Unknown'
+                    };
+                    playersMap.set(leader.personId, playerData);
+                    if (!teamRosters[teamTricode]) {
+                        teamRosters[teamTricode] = [];
+                    }
+                    teamRosters[teamTricode].push(playerData);
+                }
+            }
+        });
+        const players = Array.from(playersMap.values());
+        res.json({
+            total: players.length,
+            players: players.sort((a, b) => b.points - a.points), // Sort by points
+            teams: teamRosters,
+            lastUpdated: new Date().toISOString()
+        });
+    }
+    catch (error) {
+        console.error('Error fetching league roster:', error);
+        res.status(500).json({ error: 'Failed to fetch league roster' });
+    }
+});
 // GET /api/v1/players/:id - Get player details
 router.get('/players/:id', async (req, res) => {
     try {
