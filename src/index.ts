@@ -8,8 +8,20 @@ import { WebSocketServer } from "ws";
 // Load environment variables
 dotenv.config({ path: path.join(process.cwd(), ".env") });
 
-// Detect IISNode environment
-const isIISNode = !!process.env.IISNODE_VERSION;
+// Detect IISNode environment - use multiple detection methods
+const isIISNode = !!(
+  process.env.IISNODE_VERSION ||
+  process.env.APP_POOL_ID ||
+  process.env.PLESK_BIN ||
+  (process.cwd() && process.cwd().includes('vhosts')) ||
+  require.main !== module
+);
+
+console.log('IISNode detection:', isIISNode);
+console.log('IISNODE_VERSION:', process.env.IISNODE_VERSION);
+console.log('PLESK_BIN:', process.env.PLESK_BIN);
+console.log('CWD:', process.cwd());
+console.log('require.main !== module:', require.main !== module);
 
 const app = express();
 
