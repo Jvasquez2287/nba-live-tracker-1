@@ -85,12 +85,35 @@ wss.on("connection", (ws, req: any) => {
 
 // Start background tasks only in development
 if (!isIISNode) {
-  dataCache.startPolling();
-  startCleanupTask();
-  scoreboardWebSocketManager.startBroadcasting();
-  playbyplayWebSocketManager.startBroadcasting();
-  scoreboardWebSocketManager.startCleanupTask();
-  playbyplayWebSocketManager.startCleanupTask();
+  try {
+    dataCache.startPolling();
+    console.log('Data cache polling started');
+  } catch (error) {
+    console.error('Error starting data cache:', error);
+  }
+
+  try {
+    startCleanupTask();
+    console.log('Cleanup task started');
+  } catch (error) {
+    console.error('Error starting cleanup task:', error);
+  }
+
+  try {
+    scoreboardWebSocketManager.startBroadcasting();
+    playbyplayWebSocketManager.startBroadcasting();
+    console.log('WebSocket broadcasting started');
+  } catch (error) {
+    console.error('Error starting WebSocket broadcasting:', error);
+  }
+
+  try {
+    scoreboardWebSocketManager.startCleanupTask();
+    playbyplayWebSocketManager.startCleanupTask();
+    console.log('WebSocket cleanup tasks started');
+  } catch (error) {
+    console.error('Error starting cleanup tasks:', error);
+  }
 }
 
 // Start server
