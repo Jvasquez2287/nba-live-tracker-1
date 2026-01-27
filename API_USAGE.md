@@ -3,7 +3,7 @@
 ## Base URL
 ```
 http://nba.m-api.net  (Production on Plesk)
-http://localhost:8000 (Local Development)
+https://nba.m-api.net (Local Development)
 ```
 
 ---
@@ -16,7 +16,7 @@ http://localhost:8000 (Local Development)
 Check if the API is running.
 
 ```bash
-curl http://localhost:8000/
+curl https://nba.m-api.net/
 ```
 
 **Response:**
@@ -38,55 +38,55 @@ All API endpoints use the `/api/v1` prefix:
 #### Schedule
 **GET** `/api/v1/schedule`
 ```bash
-curl http://localhost:8000/api/v1/schedule
+curl https://nba.m-api.net/api/v1/schedule
 ```
 
 #### Standings
 **GET** `/api/v1/standings`
 ```bash
-curl http://localhost:8000/api/v1/standings
+curl https://nba.m-api.net/api/v1/standings
 ```
 
 #### Players
 **GET** `/api/v1/players`
 ```bash
-curl http://localhost:8000/api/v1/players
+curl https://nba.m-api.net/api/v1/players
 ```
 
 #### Teams
 **GET** `/api/v1/teams`
 ```bash
-curl http://localhost:8000/api/v1/teams
+curl https://nba.m-api.net/api/v1/teams
 ```
 
 #### Search
 **GET** `/api/v1/search`
 ```bash
-curl http://localhost:8000/api/v1/search
+curl https://nba.m-api.net/api/v1/search
 ```
 
 #### Predictions
 **GET** `/api/v1/predictions`
 ```bash
-curl http://localhost:8000/api/v1/predictions
+curl https://nba.m-api.net/api/v1/predictions
 ```
 
 #### League
 **GET** `/api/v1/league`
 ```bash
-curl http://localhost:8000/api/v1/league
+curl https://nba.m-api.net/api/v1/league
 ```
 
 #### Scoreboard
 **GET** `/api/v1/scoreboard`
 ```bash
-curl http://localhost:8000/api/v1/scoreboard
+curl https://nba.m-api.net/api/v1/scoreboard
 ```
 
 #### Play-by-Play
 **GET** `/api/v1/scoreboard/playbyplay/:gameId`
 ```bash
-curl http://localhost:8000/api/v1/scoreboard/playbyplay/0021900001
+curl https://nba.m-api.net/api/v1/scoreboard/playbyplay/0021900001
 ```
 
 ---
@@ -233,19 +233,19 @@ dashboard.connectPlayByPlay('0021900001');
 
 ```javascript
 // Fetch schedule
-fetch('http://localhost:8000/api/v1/schedule')
+fetch('https://nba.m-api.net/api/v1/schedule')
   .then(res => res.json())
   .then(data => console.log('Schedule:', data))
   .catch(err => console.error('Error:', err));
 
 // Fetch standings
-fetch('http://localhost:8000/api/v1/standings')
+fetch('https://nba.m-api.net/api/v1/standings')
   .then(res => res.json())
   .then(data => console.log('Standings:', data))
   .catch(err => console.error('Error:', err));
 
 // Fetch specific play-by-play
-fetch('http://localhost:8000/api/v1/scoreboard/playbyplay/0021900001')
+fetch('https://nba.m-api.net/api/v1/scoreboard/playbyplay/0021900001')
   .then(res => res.json())
   .then(data => console.log('Play-by-Play:', data))
   .catch(err => console.error('Error:', err));
@@ -257,22 +257,22 @@ fetch('http://localhost:8000/api/v1/scoreboard/playbyplay/0021900001')
 
 ```bash
 # Health check
-curl http://localhost:8000/
+curl https://nba.m-api.net/
 
 # Get scoreboard
-curl http://localhost:8000/api/v1/scoreboard
+curl https://nba.m-api.net/api/v1/scoreboard
 
 # Get standings
-curl http://localhost:8000/api/v1/standings
+curl https://nba.m-api.net/api/v1/standings
 
 # Get players
-curl http://localhost:8000/api/v1/players
+curl https://nba.m-api.net/api/v1/players
 
 # Get teams
-curl http://localhost:8000/api/v1/teams
+curl https://nba.m-api.net/api/v1/teams
 
 # Get play-by-play for specific game
-curl http://localhost:8000/api/v1/scoreboard/playbyplay/0021900001
+curl https://nba.m-api.net/api/v1/scoreboard/playbyplay/0021900001
 ```
 
 ---
@@ -318,7 +318,7 @@ curl http://localhost:8000/api/v1/scoreboard/playbyplay/0021900001
 
 ```javascript
 // HTTP Error Handling
-fetch('http://localhost:8000/api/v1/scoreboard')
+fetch('https://nba.m-api.net/api/v1/scoreboard')
   .then(res => {
     if (!res.ok) {
       throw new Error(`HTTP error! status: ${res.status}`);
