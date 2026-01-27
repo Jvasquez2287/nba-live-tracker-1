@@ -1,37 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -39,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getHistoricalGames = getHistoricalGames;
 exports.getHistoricalBoxScore = getHistoricalBoxScore;
 const axios_1 = __importDefault(require("axios"));
-const NBA = __importStar(require("nba"));
+const STATS_NBA_API = 'https://stats.nba.com/stats/scoreboard';
 const PYTHON_API = 'http://localhost:5000/api/v1';
 const REQUEST_TIMEOUT = 10000;
 // Rate limiting: 1 request per second
@@ -170,108 +137,96 @@ async function getHistoricalGames(date) {
             }
         }
         catch (pythonError) {
-            console.log('Python API not available, trying nba package');
+            console.log('Python API not available, trying stats.nba.com directly');
         }
-        // Fallback: Try using nba npm package (leagueGameLog)
-        try {
-            console.log(`Attempting to fetch from nba package (leagueGameLog)`);
-            await enforceRateLimit();
-            // Format date as MM/DD/YYYY for nba package
-            const [year, month, day] = date.split('-');
-            const formattedDate = `${month}/${day}/${year}`;
-            // Determine season from the date
-            const currentYear = parseInt(year);
-            const currentMonth = parseInt(month);
-            const season = currentMonth < 10 ? `${currentYear - 1}-${currentYear}` : `${currentYear}-${currentYear + 1}`;
-            const result = await NBA.stats.leagueGameLog({
-                Counter: 1000,
-                DateFrom: formattedDate,
-                DateTo: formattedDate,
-                Direction: 'DESC',
-                LeagueID: '00',
-                PlayerOrTeam: 'T',
-                Season: season,
-                SeasonType: 'Regular Season',
-                Sorter: 'DATE'
+        // Fallback: Try stats.nba.com direct
+        console.log(`Attempting to fetch from stats.nba.com`);
+        await enforceRateLimit();
+        const response = await axios_1.default.get(STATS_NBA_API, {
+            params: {
+                GameDate: date,
+                LeagueID: '00'
+            },
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Origin': 'https://nba.com',
+                'Referer': 'https://nba.com/',
+                'Connection': 'keep-alive'
+            },
+            timeout: REQUEST_TIMEOUT
+        });
+        const resultSets = response.data.resultSets || [];
+        const gameHeader = resultSets.find((rs) => rs.name === 'GameHeader');
+        if (!gameHeader || !gameHeader.rowSet || gameHeader.rowSet.length === 0) {
+            console.log(`No games found for ${date}`);
+            return [];
+        }
+        const headers = gameHeader.headers;
+        const games = gameHeader.rowSet || [];
+        const processedGames = games.map((game) => {
+            const gameObj = {};
+            headers.forEach((header, idx) => {
+                gameObj[header] = game[idx];
             });
-            if (result && Array.isArray(result)) {
-                console.log(`Found ${result.length} game records from nba package`);
-                // Group by game ID since league game log returns one row per team per game
-                const gamesMap = new Map();
-                for (const gameLog of result) {
-                    const gameId = gameLog.GAME_ID;
-                    if (!gamesMap.has(gameId)) {
-                        // Initialize game entry
-                        gamesMap.set(gameId, {
-                            gameId: gameId,
-                            gameDate: gameLog.GAME_DATE || date,
-                            gameStatus: 3, // Assume Final for historical games
-                            gameStatusText: 'Final',
-                            homeTeam: null,
-                            awayTeam: null
-                        });
-                    }
-                    const game = gamesMap.get(gameId);
-                    const teamId = parseInt(gameLog.TEAM_ID || '0');
-                    // Determine if home or away based on team ID order
-                    // NBA convention: rowSet sorts with home team first
-                    if (!game.homeTeam) {
-                        game.homeTeam = {
-                            teamName: gameLog.TEAM_NAME || getTeamName(gameLog.TEAM_ABBREVIATION || 'UNK'),
-                            teamId: teamId,
-                            teamTricode: gameLog.TEAM_ABBREVIATION || 'UNK',
-                            wins: parseInt(gameLog.W || '0'),
-                            losses: parseInt(gameLog.L || '0'),
-                            score: parseInt(gameLog.PTS || '0')
-                        };
-                    }
-                    else {
-                        game.awayTeam = {
-                            teamName: gameLog.TEAM_NAME || getTeamName(gameLog.TEAM_ABBREVIATION || 'UNK'),
-                            teamId: teamId,
-                            teamTricode: gameLog.TEAM_ABBREVIATION || 'UNK',
-                            wins: parseInt(gameLog.W || '0'),
-                            losses: parseInt(gameLog.L || '0'),
-                            score: parseInt(gameLog.PTS || '0')
-                        };
-                    }
+            // Map stats.nba.com response to our format
+            const gameStatus = parseInt(gameObj.GAME_STATUS || '0');
+            const gameStatusText = getGameStatusText(gameStatus);
+            const homeTeamId = gameObj.HOME_TEAM_ID;
+            const awayTeamId = gameObj.VISITOR_TEAM_ID;
+            const homeTricode = getTeamTricode(homeTeamId);
+            const awayTricode = getTeamTricode(awayTeamId);
+            return {
+                gameId: gameObj.GAME_ID,
+                gameDate: gameObj.GAME_DATE,
+                gameStatus: gameStatus,
+                gameStatusText: gameStatusText,
+                homeTeam: {
+                    teamName: getTeamName(homeTricode),
+                    teamId: homeTeamId,
+                    teamTricode: homeTricode,
+                    wins: parseInt(gameObj.HOME_TEAM_WINS || '0'),
+                    losses: parseInt(gameObj.HOME_TEAM_LOSSES || '0'),
+                    score: parseInt(gameObj.PTS_home || '0')
+                },
+                awayTeam: {
+                    teamName: getTeamName(awayTricode),
+                    teamId: awayTeamId,
+                    teamTricode: awayTricode,
+                    wins: parseInt(gameObj.VISITOR_TEAM_WINS || '0'),
+                    losses: parseInt(gameObj.VISITOR_TEAM_LOSSES || '0'),
+                    score: parseInt(gameObj.PTS_away || '0')
                 }
-                const games = Array.from(gamesMap.values());
-                if (games.length > 0) {
-                    console.log(`Successfully processed ${games.length} games from nba package`);
-                    return games;
-                }
-            }
-        }
-        catch (nbaError) {
-            console.log('nba package failed:', nbaError.message);
-        }
-        // All sources failed
-        console.log(`No games found for ${date} from any source`);
-        return [];
+            };
+        });
+        console.log(`Successfully fetched ${processedGames.length} games for ${date}`);
+        return processedGames;
     }
     catch (error) {
-        console.error(`Error in getHistoricalGames for ${date}:`, error.message);
-        return [];
+        console.error(`Error fetching historical games for ${date}:`, error.message);
+        throw error;
     }
 }
 async function getHistoricalBoxScore(gameId) {
     try {
-        console.log(`Fetching box score for game ${gameId}`);
+        console.log(`Fetching box score for game ${gameId} from stats.nba.com`);
         // Enforce rate limiting
         await enforceRateLimit();
-        // Try nba package first
-        try {
-            const result = await NBA.stats.boxScoreSummaryV2({
+        const response = await axios_1.default.get('https://stats.nba.com/stats/boxscoresummaryv2', {
+            params: {
                 GameID: gameId
-            });
-            console.log(`Successfully fetched box score for game ${gameId} from nba package`);
-            return result;
-        }
-        catch (nbaError) {
-            console.log('nba package box score failed, returning error');
-            throw nbaError;
-        }
+            },
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Origin': 'https://nba.com',
+                'Referer': 'https://nba.com/'
+            },
+            timeout: REQUEST_TIMEOUT
+        });
+        return response.data;
     }
     catch (error) {
         console.error(`Error fetching box score for game ${gameId}:`, error.message);

@@ -1,6 +1,5 @@
 import express from 'express';
 import { dataCache } from '../services/dataCache';
-import { getHistoricalGames } from '../services/historicalData';
 
 const router = express.Router();
 
@@ -53,99 +52,96 @@ router.get('/schedule', async (req, res) => {
   }
 });
 
-// GET /api/v1/schedule/date/:date - Get schedule for a specific date (including historical)
+// GET /api/v1/schedule/date/:date - Get schedule for a specific date
 router.get('/schedule/date/:date', async (req, res) => {
   try {
     const dateParam = req.params.date; // Format: YYYY-MM-DD
     
-    // Validate date format
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
-      return res.status(400).json({
-        error: 'Invalid date format',
-        format: 'YYYY-MM-DD',
-        example: '2026-01-25'
+    let scoreboardData = await dataCache.getScoreboard();
+    
+    // If no data in cache, refresh from NBA API
+    if (!scoreboardData || !scoreboardData.scoreboard?.games || scoreboardData.scoreboard.games.length === 0) {
+      scoreboardData = await dataCache.refreshScoreboard();
+    }
+    
+    const scoreboard = scoreboardData?.scoreboard;
+    
+    if (!scoreboard || !scoreboard.games) {
+      return res.json({
+        date: dateParam,
+        games: [],
+        total: 0,
+        message: 'No games scheduled for this date',
+        note: 'NBA API only provides current day games. Use /api/v1/schedule for today\'s games.',
+        cacheStatus: 'empty'
       });
     }
 
+    // Get today's date for comparison
     const todayDate = new Date().toISOString().split('T')[0];
+    const cacheDate = scoreboard.gameDate;
     
-    let games: any[] = [];
-    let source = '';
+    // Format date for matching
+    // Input: YYYY-MM-DD (e.g., 2026-01-25)
+    // NBA API format: YYYYMMDD (e.g., 20260125)
+    const formattedDateNoHyphens = dateParam.replace(/-/g, ''); // 20260125
+    
+    // Also support matching by gameTimeUTC which contains full ISO datetime
+    const datePrefix = dateParam.substring(0, 10); // Extract YYYY-MM-DD part
+    
+    const filteredGames = scoreboard.games.filter((game: any) => {
+      // Check gameDate field (could be YYYY-MM-DD or YYYYMMDD)
+      if (game.gameDate) {
+        const normalizedGameDate = String(game.gameDate).replace(/-/g, '');
+        if (normalizedGameDate === formattedDateNoHyphens) return true;
+        if (game.gameDate === dateParam) return true;
+      }
+      
+      // Check gameTimeUTC (ISO format: 2026-01-25T20:00:00Z)
+      if (game.gameTimeUTC && game.gameTimeUTC.substring(0, 10) === datePrefix) return true;
+      
+      // Check by gameId pattern (first 8 digits: YYYYMMDD)
+      if (game.gameId) {
+        const gameIdDatePart = String(game.gameId).substring(0, 8);
+        if (gameIdDatePart === formattedDateNoHyphens) return true;
+      }
+      
+      return false;
+    });
 
-    // For today's date, use cache (real-time data)
-    if (dateParam === todayDate) {
-      let scoreboardData = await dataCache.getScoreboard();
+    // If no games found for requested date, provide helpful info
+    if (filteredGames.length === 0) {
+      const isHistorical = dateParam < todayDate;
+      const isFuture = dateParam > todayDate;
       
-      // If no data in cache, refresh from NBA API
-      if (!scoreboardData || !scoreboardData.scoreboard?.games || scoreboardData.scoreboard.games.length === 0) {
-        scoreboardData = await dataCache.refreshScoreboard();
-      }
-      
-      const scoreboard = scoreboardData?.scoreboard;
-      games = scoreboard?.games || [];
-      source = 'cdn.nba.com (live)';
-    } else {
-      // For historical or future dates, use stats.nba.com
-      try {
-        const historicalGames = await getHistoricalGames(dateParam);
-        games = historicalGames.map((game: any) => ({
-          gameId: game.gameId,
-          gameDate: game.gameDate,
-          gameStatus: game.gameStatus,
-          gameStatusText: game.gameStatusText,
-          homeTeam: {
-            teamName: game.homeTeam.teamName,
-            teamTricode: game.homeTeam.teamTricode,
-            teamId: game.homeTeam.teamId,
-            wins: game.homeTeam.wins,
-            losses: game.homeTeam.losses,
-            score: game.homeTeam.score
-          },
-          awayTeam: {
-            teamName: game.awayTeam.teamName,
-            teamTricode: game.awayTeam.teamTricode,
-            teamId: game.awayTeam.teamId,
-            wins: game.awayTeam.wins,
-            losses: game.awayTeam.losses,
-            score: game.awayTeam.score
-          }
-        }));
-        source = 'stats.nba.com (official)';
-      } catch (historicalError) {
-        console.error(`Failed to fetch historical games for ${dateParam}:`, historicalError);
-        // Return empty with helpful message
-        return res.json({
-          date: dateParam,
-          games: [],
-          total: 0,
-          source: 'stats.nba.com',
-          error: 'Unable to fetch games for this date',
-          note: 'stats.nba.com is temporarily unavailable',
-          suggestion: `Try /api/v1/schedule for today's games (${todayDate})`
-        });
-      }
+      return res.json({
+        date: dateParam,
+        games: [],
+        total: 0,
+        cacheStatus: 'no_games_for_date',
+        cacheDate: cacheDate,
+        note: isHistorical 
+          ? 'Historical game data not available. NBA API only provides current day games.'
+          : isFuture
+          ? 'Future game data not yet available. Games are added to the API as they approach.'
+          : 'No games scheduled for today.',
+        suggestion: `Use /api/v1/schedule to get today's games (${todayDate})`
+      });
     }
 
-    // Format the response
     const schedule = {
       date: dateParam,
-      games: games.map((game: any) => ({
+      games: filteredGames.map((game: any) => ({
         gameId: game.gameId,
-        startTime: game.gameTimeUTC || game.gameDate,
+        startTime: game.gameTimeUTC,
         awayTeam: {
           name: game.awayTeam?.teamName,
           tricode: game.awayTeam?.teamTricode,
-          id: game.awayTeam?.teamId,
-          wins: game.awayTeam?.wins,
-          losses: game.awayTeam?.losses,
           score: game.awayTeam?.score
         },
         homeTeam: {
           name: game.homeTeam?.teamName,
           tricode: game.homeTeam?.teamTricode,
-          id: game.homeTeam?.teamId,
-          wins: game.homeTeam?.wins,
-          losses: game.homeTeam?.losses,
           score: game.homeTeam?.score
         },
         status: game.gameStatus,
@@ -153,8 +149,7 @@ router.get('/schedule/date/:date', async (req, res) => {
         period: game.period,
         gameClock: game.gameClock
       })),
-      total: games.length,
-      source: source
+      total: filteredGames.length
     };
 
     res.json(schedule);
