@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -6,6 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getHistoricalGames = getHistoricalGames;
 exports.getHistoricalBoxScore = getHistoricalBoxScore;
 const axios_1 = __importDefault(require("axios"));
+const NBA = __importStar(require("nba"));
 const PYTHON_API = 'http://localhost:5000/api/v1';
 const REQUEST_TIMEOUT = 10000;
 // Rate limiting: 1 request per second
@@ -94,10 +128,9 @@ function getTeamName(tricode) {
 async function getHistoricalGames(date) {
     try {
         console.log(`Fetching historical games for ${date}`);
-        // Primary source: Python API (nba-tracker-api) which uses nba-api-client/nba_api library
-        // This gives us access to historical data via the official NBA Stats API
+        // Try Python API first (nba-tracker-api) since it has reliable access via nba_api library
         try {
-            console.log(`Attempting to fetch from Python API (which uses nba-api-client internally)`);
+            console.log(`Attempting to fetch from Python API at ${PYTHON_API}`);
             const pythonResponse = await axios_1.default.get(`${PYTHON_API}/schedule/date/${date}`, {
                 timeout: REQUEST_TIMEOUT,
                 validateStatus: (status) => status < 500 // Accept any successful response or 4xx
@@ -105,7 +138,7 @@ async function getHistoricalGames(date) {
             if (pythonResponse.data && pythonResponse.data.games && Array.isArray(pythonResponse.data.games)) {
                 const games = pythonResponse.data.games;
                 if (games.length > 0) {
-                    console.log(`Successfully fetched ${games.length} games from Python API (nba-api-client)`);
+                    console.log(`Successfully fetched ${games.length} games from Python API`);
                     // Map Python API response to our format
                     return games.map((game) => {
                         const homeTeamId = parseInt(game.homeTeam?.teamId || '0');
@@ -137,15 +170,89 @@ async function getHistoricalGames(date) {
             }
         }
         catch (pythonError) {
-            console.log(`Python API error: ${pythonError instanceof Error ? pythonError.message : String(pythonError)}`);
+            console.log('Python API not available, trying nba package');
         }
-        // If no data from Python API, return empty array
-        console.log(`No games found for ${date}`);
+        // Fallback: Try using nba npm package (leagueGameLog)
+        try {
+            console.log(`Attempting to fetch from nba package (leagueGameLog)`);
+            await enforceRateLimit();
+            // Format date as MM/DD/YYYY for nba package
+            const [year, month, day] = date.split('-');
+            const formattedDate = `${month}/${day}/${year}`;
+            // Determine season from the date
+            const currentYear = parseInt(year);
+            const currentMonth = parseInt(month);
+            const season = currentMonth < 10 ? `${currentYear - 1}-${currentYear}` : `${currentYear}-${currentYear + 1}`;
+            const result = await NBA.stats.leagueGameLog({
+                Counter: 1000,
+                DateFrom: formattedDate,
+                DateTo: formattedDate,
+                Direction: 'DESC',
+                LeagueID: '00',
+                PlayerOrTeam: 'T',
+                Season: season,
+                SeasonType: 'Regular Season',
+                Sorter: 'DATE'
+            });
+            if (result && Array.isArray(result)) {
+                console.log(`Found ${result.length} game records from nba package`);
+                // Group by game ID since league game log returns one row per team per game
+                const gamesMap = new Map();
+                for (const gameLog of result) {
+                    const gameId = gameLog.GAME_ID;
+                    if (!gamesMap.has(gameId)) {
+                        // Initialize game entry
+                        gamesMap.set(gameId, {
+                            gameId: gameId,
+                            gameDate: gameLog.GAME_DATE || date,
+                            gameStatus: 3, // Assume Final for historical games
+                            gameStatusText: 'Final',
+                            homeTeam: null,
+                            awayTeam: null
+                        });
+                    }
+                    const game = gamesMap.get(gameId);
+                    const teamId = parseInt(gameLog.TEAM_ID || '0');
+                    // Determine if home or away based on team ID order
+                    // NBA convention: rowSet sorts with home team first
+                    if (!game.homeTeam) {
+                        game.homeTeam = {
+                            teamName: gameLog.TEAM_NAME || getTeamName(gameLog.TEAM_ABBREVIATION || 'UNK'),
+                            teamId: teamId,
+                            teamTricode: gameLog.TEAM_ABBREVIATION || 'UNK',
+                            wins: parseInt(gameLog.W || '0'),
+                            losses: parseInt(gameLog.L || '0'),
+                            score: parseInt(gameLog.PTS || '0')
+                        };
+                    }
+                    else {
+                        game.awayTeam = {
+                            teamName: gameLog.TEAM_NAME || getTeamName(gameLog.TEAM_ABBREVIATION || 'UNK'),
+                            teamId: teamId,
+                            teamTricode: gameLog.TEAM_ABBREVIATION || 'UNK',
+                            wins: parseInt(gameLog.W || '0'),
+                            losses: parseInt(gameLog.L || '0'),
+                            score: parseInt(gameLog.PTS || '0')
+                        };
+                    }
+                }
+                const games = Array.from(gamesMap.values());
+                if (games.length > 0) {
+                    console.log(`Successfully processed ${games.length} games from nba package`);
+                    return games;
+                }
+            }
+        }
+        catch (nbaError) {
+            console.log('nba package failed:', nbaError.message);
+        }
+        // All sources failed
+        console.log(`No games found for ${date} from any source`);
         return [];
     }
     catch (error) {
-        console.error(`Error fetching historical games for ${date}:`, error.message);
-        throw error;
+        console.error(`Error in getHistoricalGames for ${date}:`, error.message);
+        return [];
     }
 }
 async function getHistoricalBoxScore(gameId) {
@@ -153,29 +260,35 @@ async function getHistoricalBoxScore(gameId) {
         console.log(`Fetching box score for game ${gameId}`);
         // Enforce rate limiting
         await enforceRateLimit();
-        // Try nba-api-client first
+        // Try nba package first
         try {
-            // nba-api-client getBoxScore function would be used here if available
-            // For now, use fallback to Python API
-            const pythonResponse = await axios_1.default.get(`${PYTHON_API}/games/${gameId}/boxscore`, {
-                timeout: REQUEST_TIMEOUT,
-                validateStatus: (status) => status < 500
+            const result = await NBA.stats.boxScoreSummaryV2({
+                GameID: gameId
             });
-            if (pythonResponse.data) {
-                console.log(`Successfully fetched box score for game ${gameId} from Python API`);
-                return pythonResponse.data;
-            }
+            console.log(`Successfully fetched box score for game ${gameId} from nba package`);
+            return result;
         }
-        catch (pythonError) {
-            console.log('Python API not available for box score');
+        catch (nbaError) {
+            console.log('nba package box score failed, returning error');
+            throw nbaError;
         }
-        // No data available
-        return null;
     }
     catch (error) {
         console.error(`Error fetching box score for game ${gameId}:`, error.message);
         throw error;
     }
+}
+function getGameStatusText(status) {
+    const statusMap = {
+        1: 'Not Started',
+        2: 'In Progress',
+        3: 'Final',
+        4: 'Final/OT',
+        5: 'Postponed',
+        6: 'Cancelled',
+        7: 'Suspended'
+    };
+    return statusMap[status] || 'Unknown';
 }
 exports.default = {
     getHistoricalGames,
