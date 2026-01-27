@@ -53,6 +53,91 @@ router.get('/teams', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch teams' });
     }
 });
+// GET /api/v1/teams/stats - Get team statistics
+router.get('/teams/stats', async (req, res) => {
+    try {
+        const season = req.query.season || '2024-25';
+        const scoreboardData = await dataCache_1.dataCache.getScoreboard();
+        const scoreboard = scoreboardData?.scoreboard;
+        if (!scoreboard || !scoreboard.games) {
+            return res.json({
+                season,
+                teams: [],
+                total: 0,
+                message: 'No games data available'
+            });
+        }
+        // Extract team stats from games
+        const teamsStatsMap = new Map();
+        scoreboard.games.forEach((game) => {
+            // Home team
+            if (game.homeTeam) {
+                if (!teamsStatsMap.has(game.homeTeam.teamId)) {
+                    teamsStatsMap.set(game.homeTeam.teamId, {
+                        teamId: game.homeTeam.teamId,
+                        name: game.homeTeam.teamName,
+                        city: game.homeTeam.teamCity,
+                        tricode: game.homeTeam.teamTricode,
+                        wins: game.homeTeam.wins || 0,
+                        losses: game.homeTeam.losses || 0,
+                        pointsFor: 0,
+                        pointsAgainst: 0,
+                        gamesPlayed: 0,
+                        avgPointsPerGame: 0,
+                        avgPointsAllowed: 0,
+                        winPercentage: 0
+                    });
+                }
+                const teamStats = teamsStatsMap.get(game.homeTeam.teamId);
+                teamStats.pointsFor += game.homeTeam.score || 0;
+                teamStats.pointsAgainst += game.awayTeam?.score || 0;
+                teamStats.gamesPlayed++;
+            }
+            // Away team
+            if (game.awayTeam) {
+                if (!teamsStatsMap.has(game.awayTeam.teamId)) {
+                    teamsStatsMap.set(game.awayTeam.teamId, {
+                        teamId: game.awayTeam.teamId,
+                        name: game.awayTeam.teamName,
+                        city: game.awayTeam.teamCity,
+                        tricode: game.awayTeam.teamTricode,
+                        wins: game.awayTeam.wins || 0,
+                        losses: game.awayTeam.losses || 0,
+                        pointsFor: 0,
+                        pointsAgainst: 0,
+                        gamesPlayed: 0,
+                        avgPointsPerGame: 0,
+                        avgPointsAllowed: 0,
+                        winPercentage: 0
+                    });
+                }
+                const teamStats = teamsStatsMap.get(game.awayTeam.teamId);
+                teamStats.pointsFor += game.awayTeam.score || 0;
+                teamStats.pointsAgainst += game.homeTeam?.score || 0;
+                teamStats.gamesPlayed++;
+            }
+        });
+        // Calculate averages
+        const teamsStats = Array.from(teamsStatsMap.values()).map((team) => {
+            if (team.gamesPlayed > 0) {
+                team.avgPointsPerGame = parseFloat((team.pointsFor / team.gamesPlayed).toFixed(1));
+                team.avgPointsAllowed = parseFloat((team.pointsAgainst / team.gamesPlayed).toFixed(1));
+                team.winPercentage = parseFloat(((team.wins / (team.wins + team.losses)) * 100).toFixed(1));
+            }
+            return team;
+        });
+        res.json({
+            season,
+            teams: teamsStats.sort((a, b) => b.wins - a.wins),
+            total: teamsStats.length,
+            lastUpdated: new Date().toISOString()
+        });
+    }
+    catch (error) {
+        console.error('Error fetching team stats:', error);
+        res.status(500).json({ error: 'Failed to fetch team statistics' });
+    }
+});
 // GET /api/v1/teams/:id - Get team details
 router.get('/teams/:id', async (req, res) => {
     try {
