@@ -88,11 +88,11 @@ const league_1 = __importDefault(require("./routes/league"));
 const scoreboard_1 = __importDefault(require("./routes/scoreboard"));
 app.use("/api/v1", schedule_1.default);
 app.use("/api/v1", standings_1.default);
-app.use("/api/v1", players_1.default);
 app.use("/api/v1", teams_1.default);
 app.use("/api/v1", search_1.default);
 app.use("/api/v1", predictions_1.default);
 app.use("/api/v1", league_1.default);
+app.use("/api/v1", players_1.default);
 app.use("/api/v1/scoreboard", scoreboard_1.default);
 // Import WebSocket managers and services
 const websocketManager_1 = require("./services/websocketManager");

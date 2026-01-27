@@ -5,8 +5,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const dataCache_1 = require("../services/dataCache");
-const historicalData_1 = require("../services/historicalData");
+const axios_1 = __importDefault(require("axios"));
 const router = express_1.default.Router();
+// Python API base URL (nba-tracker-api)
+const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://nba-v1.m-api.net:8000/api/v1';
 // GET /api/v1/schedule - Get today's schedule
 router.get('/schedule', async (req, res) => {
     try {
@@ -51,105 +53,97 @@ router.get('/schedule', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch schedule' });
     }
 });
-// GET /api/v1/schedule/date/:date - Get schedule for a specific date (including historical)
+// GET /api/v1/schedule/date/:date - Get schedule for a specific date
 router.get('/schedule/date/:date', async (req, res) => {
     try {
         const dateParam = req.params.date; // Format: YYYY-MM-DD
         // Validate date format
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(dateParam)) {
             return res.status(400).json({
-                error: 'Invalid date format',
-                format: 'YYYY-MM-DD',
+                error: 'Invalid date format. Use YYYY-MM-DD',
                 example: '2026-01-25'
             });
         }
+        // Get today's date
         const todayDate = new Date().toISOString().split('T')[0];
-        let games = [];
-        let source = '';
-        // For today's date, use cache (real-time data)
-        if (dateParam === todayDate) {
+        const isHistorical = dateParam < todayDate;
+        const isFuture = dateParam > todayDate;
+        const isToday = dateParam === todayDate;
+        // For today's games, use the live NBA API via cache
+        if (isToday) {
             let scoreboardData = await dataCache_1.dataCache.getScoreboard();
-            // If no data in cache, refresh from NBA API
             if (!scoreboardData || !scoreboardData.scoreboard?.games || scoreboardData.scoreboard.games.length === 0) {
                 scoreboardData = await dataCache_1.dataCache.refreshScoreboard();
             }
             const scoreboard = scoreboardData?.scoreboard;
-            games = scoreboard?.games || [];
-            source = 'cdn.nba.com (live)';
-        }
-        else {
-            // For historical or future dates, use stats.nba.com
-            try {
-                const historicalGames = await (0, historicalData_1.getHistoricalGames)(dateParam);
-                games = historicalGames.map((game) => ({
-                    gameId: game.gameId,
-                    gameDate: game.gameDate,
-                    gameStatus: game.gameStatus,
-                    gameStatusText: game.gameStatusText,
-                    homeTeam: {
-                        teamName: game.homeTeam.teamName,
-                        teamTricode: game.homeTeam.teamTricode,
-                        teamId: game.homeTeam.teamId,
-                        wins: game.homeTeam.wins,
-                        losses: game.homeTeam.losses,
-                        score: game.homeTeam.score
-                    },
-                    awayTeam: {
-                        teamName: game.awayTeam.teamName,
-                        teamTricode: game.awayTeam.teamTricode,
-                        teamId: game.awayTeam.teamId,
-                        wins: game.awayTeam.wins,
-                        losses: game.awayTeam.losses,
-                        score: game.awayTeam.score
-                    }
-                }));
-                source = 'stats.nba.com (official)';
-            }
-            catch (historicalError) {
-                console.error(`Failed to fetch historical games for ${dateParam}:`, historicalError);
-                // Return empty with helpful message
+            if (!scoreboard || !scoreboard.games || scoreboard.games.length === 0) {
                 return res.json({
                     date: dateParam,
                     games: [],
                     total: 0,
-                    source: 'stats.nba.com',
-                    error: 'Unable to fetch games for this date',
-                    note: 'stats.nba.com is temporarily unavailable',
-                    suggestion: `Try /api/v1/schedule for today's games (${todayDate})`
+                    message: 'No games scheduled for today'
                 });
             }
+            const schedule = {
+                date: scoreboard.gameDate || dateParam,
+                games: scoreboard.games.map((game) => ({
+                    gameId: game.gameId,
+                    startTime: game.gameTimeUTC,
+                    awayTeam: {
+                        name: game.awayTeam?.teamName,
+                        tricode: game.awayTeam?.teamTricode,
+                        score: game.awayTeam?.score
+                    },
+                    homeTeam: {
+                        name: game.homeTeam?.teamName,
+                        tricode: game.homeTeam?.teamTricode,
+                        score: game.homeTeam?.score
+                    },
+                    status: game.gameStatus,
+                    statusText: game.gameStatusText,
+                    period: game.period,
+                    gameClock: game.gameClock
+                })),
+                total: scoreboard.games.length
+            };
+            return res.json(schedule);
         }
-        // Format the response
-        const schedule = {
+        // For historical or future dates, try to get from Python API (nba-tracker-api)
+        if (isHistorical || isFuture) {
+            try {
+                console.log(`Fetching historical games for ${dateParam} from Python API`);
+                const pythonApiResponse = await axios_1.default.get(`${PYTHON_API_URL}/schedule/date/${dateParam}`, { timeout: 30000 });
+                const pythonData = pythonApiResponse.data;
+                // Transform Python API response format to match TypeScript API
+                if (pythonData.games && Array.isArray(pythonData.games)) {
+                    const schedule = {
+                        date: dateParam,
+                        games: pythonData.games,
+                        total: pythonData.games.length,
+                        source: 'nba-tracker-api'
+                    };
+                    return res.json(schedule);
+                }
+            }
+            catch (pythonError) {
+                console.log(`Python API unavailable or no data for ${dateParam}:`, pythonError instanceof Error ? pythonError.message : pythonError);
+                console.log("Remote Endpoint:", `${PYTHON_API_URL}/schedule/date/${dateParam}`);
+                // Fall through to return "no data" response
+            }
+        }
+        // No data available
+        return res.json({
             date: dateParam,
-            games: games.map((game) => ({
-                gameId: game.gameId,
-                startTime: game.gameTimeUTC || game.gameDate,
-                awayTeam: {
-                    name: game.awayTeam?.teamName,
-                    tricode: game.awayTeam?.teamTricode,
-                    id: game.awayTeam?.teamId,
-                    wins: game.awayTeam?.wins,
-                    losses: game.awayTeam?.losses,
-                    score: game.awayTeam?.score
-                },
-                homeTeam: {
-                    name: game.homeTeam?.teamName,
-                    tricode: game.homeTeam?.teamTricode,
-                    id: game.homeTeam?.teamId,
-                    wins: game.homeTeam?.wins,
-                    losses: game.homeTeam?.losses,
-                    score: game.homeTeam?.score
-                },
-                status: game.gameStatus,
-                statusText: game.gameStatusText,
-                period: game.period,
-                gameClock: game.gameClock
-            })),
-            total: games.length,
-            source: source
-        };
-        res.json(schedule);
+            games: [],
+            total: 0,
+            cacheStatus: 'no_games_for_date',
+            cacheDate: todayDate,
+            note: isHistorical
+                ? 'Historical game data not available from live API. Attempted to fetch from nba-tracker-api but service may be unavailable.'
+                : 'Future game data not yet available. Games are added to the API as they approach.',
+            suggestion: `Use /api/v1/schedule to get today's games (${todayDate})`
+        });
     }
     catch (error) {
         console.error('Error fetching schedule by date:', error);

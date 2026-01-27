@@ -95,11 +95,11 @@ import scoreboardRoutes from "./routes/scoreboard";
 
 app.use("/api/v1", scheduleRoutes);
 app.use("/api/v1", standingsRoutes);
-app.use("/api/v1", playerRoutes);
 app.use("/api/v1", teamRoutes);
 app.use("/api/v1", searchRoutes);
 app.use("/api/v1", predictionsRoutes);
 app.use("/api/v1", leagueRoutes);
+app.use("/api/v1", playerRoutes);
 app.use("/api/v1/scoreboard", scoreboardRoutes);
 
 // Import WebSocket managers and services
