@@ -89,6 +89,26 @@ export class DataCache {
     return this.scoreboardCache;
   }
 
+  async refreshScoreboard(): Promise<ScoreboardResponse | null> {
+    // Force a fresh fetch from NBA API
+    try {
+      const scoreboardData = await getScoreboard();
+      
+      this.lock = true;
+      try {
+        this.scoreboardCache = scoreboardData;
+        console.log(`Scoreboard refreshed: ${scoreboardData?.scoreboard?.games?.length || 0} games`);
+      } finally {
+        this.lock = false;
+      }
+      
+      return scoreboardData;
+    } catch (error) {
+      console.error('Error refreshing scoreboard:', error);
+      return this.scoreboardCache;
+    }
+  }
+
   async getPlaybyplay(gameId: string): Promise<PlayByPlayResponse | null> {
     while (this.lock) {
       await new Promise(resolve => setTimeout(resolve, 10));

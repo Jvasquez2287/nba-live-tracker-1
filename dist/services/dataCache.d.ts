@@ -11,6 +11,7 @@ export declare class DataCache {
     private playbyplayTask;
     private cleanupTask;
     getScoreboard(): Promise<ScoreboardResponse | null>;
+    refreshScoreboard(): Promise<ScoreboardResponse | null>;
     getPlaybyplay(gameId: string): Promise<PlayByPlayResponse | null>;
     private cleanupFinishedGames;
     private periodicCleanup;

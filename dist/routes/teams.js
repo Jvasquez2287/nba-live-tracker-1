@@ -9,9 +9,13 @@ const router = express_1.default.Router();
 // GET /api/v1/teams - Get all teams
 router.get('/teams', async (req, res) => {
     try {
-        const scoreboardData = await dataCache_1.dataCache.getScoreboard();
+        let scoreboardData = await dataCache_1.dataCache.getScoreboard();
+        // If no data in cache, refresh from NBA API
+        if (!scoreboardData || !scoreboardData.scoreboard?.games || scoreboardData.scoreboard.games.length === 0) {
+            scoreboardData = await dataCache_1.dataCache.refreshScoreboard();
+        }
         const scoreboard = scoreboardData?.scoreboard;
-        if (!scoreboard || !scoreboard.games) {
+        if (!scoreboard || !scoreboard.games || scoreboard.games.length === 0) {
             return res.json({
                 teams: [],
                 total: 0,
@@ -57,9 +61,13 @@ router.get('/teams', async (req, res) => {
 router.get('/teams/stats', async (req, res) => {
     try {
         const season = req.query.season || '2024-25';
-        const scoreboardData = await dataCache_1.dataCache.getScoreboard();
+        let scoreboardData = await dataCache_1.dataCache.getScoreboard();
+        // If no data in cache, refresh from NBA API
+        if (!scoreboardData || !scoreboardData.scoreboard?.games || scoreboardData.scoreboard.games.length === 0) {
+            scoreboardData = await dataCache_1.dataCache.refreshScoreboard();
+        }
         const scoreboard = scoreboardData?.scoreboard;
-        if (!scoreboard || !scoreboard.games) {
+        if (!scoreboard || !scoreboard.games || scoreboard.games.length === 0) {
             return res.json({
                 season,
                 teams: [],

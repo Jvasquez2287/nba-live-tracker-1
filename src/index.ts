@@ -40,6 +40,49 @@ app.get("/", (req, res) => {
   });
 });
 
+// Cache refresh endpoint
+app.post("/api/v1/cache/refresh", async (req, res) => {
+  try {
+    console.log('Manual cache refresh requested');
+    const scoreboardData = await dataCache.refreshScoreboard();
+    
+    res.json({
+      success: true,
+      message: "Cache refreshed successfully",
+      games: scoreboardData?.scoreboard?.games?.length || 0,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error refreshing cache:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to refresh cache',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Cache status endpoint
+app.get("/api/v1/cache/status", async (req, res) => {
+  try {
+    const scoreboardData = await dataCache.getScoreboard();
+    const games = scoreboardData?.scoreboard?.games || [];
+    
+    res.json({
+      cacheStatus: games.length > 0 ? 'populated' : 'empty',
+      games: games.length,
+      timestamp: new Date().toISOString(),
+      lastUpdate: scoreboardData?.scoreboard?.gameDate || 'unknown'
+    });
+  } catch (error) {
+    console.error('Error getting cache status:', error);
+    res.status(500).json({
+      cacheStatus: 'error',
+      error: 'Failed to get cache status'
+    });
+  }
+});
+
 // Routes
 import scheduleRoutes from "./routes/schedule";
 import standingsRoutes from "./routes/standings";
