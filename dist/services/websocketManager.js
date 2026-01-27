@@ -40,8 +40,19 @@ class ScoreboardWebSocketManager {
             }
             const scoreboardData = await dataCache_1.dataCache.getScoreboard();
             if (scoreboardData) {
-                // Send the full scoreboard data
-                websocket.send(JSON.stringify(scoreboardData));
+                // Filter for live games first (gameStatus === 2)
+                const allGames = scoreboardData.scoreboard?.games || [];
+                const liveGames = allGames.filter((g) => g.gameStatus === 2);
+                // If no live games, use upcoming games (gameStatus === 1)
+                let gamesToSend = liveGames.length > 0 ? liveGames : allGames.filter((g) => g.gameStatus === 1);
+                // Send the filtered scoreboard data
+                const responseData = {
+                    scoreboard: {
+                        gameDate: scoreboardData.scoreboard?.gameDate || '',
+                        games: gamesToSend
+                    }
+                };
+                websocket.send(JSON.stringify(responseData));
             }
             else {
                 // Send empty structure if no data available yet
@@ -100,18 +111,28 @@ class ScoreboardWebSocketManager {
             const scoreboardData = await dataCache_1.dataCache.getScoreboard();
             if (!scoreboardData)
                 return;
-            const newGames = scoreboardData.scoreboard?.games || [];
+            const allGames = scoreboardData.scoreboard?.games || [];
+            // Filter for live games first (gameStatus === 2)
+            const liveGames = allGames.filter((g) => g.gameStatus === 2);
+            // If no live games, use upcoming games (gameStatus === 1)
+            const gamesToSend = liveGames.length > 0 ? liveGames : allGames.filter((g) => g.gameStatus === 1);
             // Check if games have changed
-            if (!this.hasGameDataChanged(newGames, this.currentGames)) {
+            if (!this.hasGameDataChanged(gamesToSend, this.currentGames)) {
                 return;
             }
-            this.currentGames = newGames;
-            console.log(`[Scoreboard WS] Broadcasting updates for ${newGames.length} games`);
+            this.currentGames = gamesToSend;
+            console.log(`[Scoreboard WS] Broadcasting updates for ${gamesToSend.length} games (${liveGames.length > 0 ? 'live' : 'upcoming'})`);
+            const broadcastData = {
+                scoreboard: {
+                    gameDate: scoreboardData.scoreboard?.gameDate || '',
+                    games: gamesToSend
+                }
+            };
             const disconnectedClients = [];
             for (const client of this.activeConnections) {
                 try {
                     if (client.readyState === ws_1.default.OPEN) {
-                        client.send(JSON.stringify(scoreboardData));
+                        client.send(JSON.stringify(broadcastData));
                     }
                     else {
                         disconnectedClients.push(client);
