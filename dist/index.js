@@ -11,6 +11,7 @@ const http_1 = __importDefault(require("http"));
 const ws_1 = require("ws");
 // Load environment variables
 dotenv_1.default.config({ path: path_1.default.join(process.cwd(), ".env") });
+// Detect IISNode environment
 const isIISNode = !!process.env.IISNODE_VERSION;
 const app = (0, express_1.default)();
 // Middleware
@@ -43,18 +44,21 @@ app.use("/api/v1", predictions_1.default);
 app.use("/api/v1", league_1.default);
 // WebSockets
 let wss;
+// LOCAL DEVELOPMENT MODE
 if (!isIISNode) {
-    // Local development
     const server = http_1.default.createServer(app);
     wss = new ws_1.WebSocketServer({ server });
-    server.listen(process.env.PORT || 8000, () => {
-        console.log("Local server running");
+    const PORT = process.env.PORT || 8000;
+    server.listen(PORT, () => {
+        console.log(`Local server running on http://localhost:${PORT}`);
     });
+    // IISNODE MODE
 }
 else {
-    // IISNode mode
+    // Create a dummy server ONLY to receive upgrade events
+    const upgradeServer = http_1.default.createServer();
     wss = new ws_1.WebSocketServer({ noServer: true });
-    app.on("upgrade", (req, socket, head) => {
+    upgradeServer.on("upgrade", (req, socket, head) => {
         wss.handleUpgrade(req, socket, head, ws => {
             wss.emit("connection", ws, req);
         });
@@ -72,7 +76,7 @@ wss.on("connection", (ws, req) => {
         websocketManager_1.playbyplayWebSocketManager.handleConnection(ws, gameId);
     }
 });
-// Background tasks (only safe outside IISNode)
+// Background tasks (ONLY safe outside IISNode)
 const dataCache_1 = require("./services/dataCache");
 const keyMoments_1 = require("./services/keyMoments");
 if (!isIISNode) {
