@@ -66,9 +66,13 @@ router.get('/schedule/date/:date', async (req, res) => {
                 games: [],
                 total: 0,
                 message: 'No games scheduled for this date',
+                note: 'NBA API only provides current day games. Use /api/v1/schedule for today\'s games.',
                 cacheStatus: 'empty'
             });
         }
+        // Get today's date for comparison
+        const todayDate = new Date().toISOString().split('T')[0];
+        const cacheDate = scoreboard.gameDate;
         // Format date for matching
         // Input: YYYY-MM-DD (e.g., 2026-01-25)
         // NBA API format: YYYYMMDD (e.g., 20260125)
@@ -95,6 +99,24 @@ router.get('/schedule/date/:date', async (req, res) => {
             }
             return false;
         });
+        // If no games found for requested date, provide helpful info
+        if (filteredGames.length === 0) {
+            const isHistorical = dateParam < todayDate;
+            const isFuture = dateParam > todayDate;
+            return res.json({
+                date: dateParam,
+                games: [],
+                total: 0,
+                cacheStatus: 'no_games_for_date',
+                cacheDate: cacheDate,
+                note: isHistorical
+                    ? 'Historical game data not available. NBA API only provides current day games.'
+                    : isFuture
+                        ? 'Future game data not yet available. Games are added to the API as they approach.'
+                        : 'No games scheduled for today.',
+                suggestion: `Use /api/v1/schedule to get today's games (${todayDate})`
+            });
+        }
         const schedule = {
             date: dateParam,
             games: filteredGames.map((game) => ({
@@ -115,15 +137,16 @@ router.get('/schedule/date/:date', async (req, res) => {
                 period: game.period,
                 gameClock: game.gameClock
             })),
-            total: filteredGames.length,
-            allGamesDate: scoreboard.gameDate,
-            message: filteredGames.length === 0 ? 'No games scheduled for this date' : undefined
+            total: filteredGames.length
         };
         res.json(schedule);
     }
     catch (error) {
         console.error('Error fetching schedule by date:', error);
-        res.status(500).json({ error: 'Failed to fetch schedule by date', details: error instanceof Error ? error.message : String(error) });
+        res.status(500).json({
+            error: 'Failed to fetch schedule by date',
+            details: error instanceof Error ? error.message : String(error)
+        });
     }
 });
 exports.default = router;
