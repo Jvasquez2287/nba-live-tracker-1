@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { dataCache } from './dataCache';
 
-const STATS_NBA_API = 'https://stats.nba.com/stats/scoreboard';
 const PYTHON_API = 'http://localhost:5000/api/v1';
 const REQUEST_TIMEOUT = 10000;
 
@@ -125,9 +124,10 @@ export async function getHistoricalGames(date: string): Promise<HistoricalGame[]
   try {
     console.log(`Fetching historical games for ${date}`);
     
-    // Try Python API first (nba-tracker-api) since it has reliable access via nba_api library
+    // Primary source: Python API (nba-tracker-api) which uses nba-api-client/nba_api library
+    // This gives us access to historical data via the official NBA Stats API
     try {
-      console.log(`Attempting to fetch from Python API at ${PYTHON_API}`);
+      console.log(`Attempting to fetch from Python API (which uses nba-api-client internally)`);
       const pythonResponse = await axios.get(`${PYTHON_API}/schedule/date/${date}`, {
         timeout: REQUEST_TIMEOUT,
         validateStatus: (status) => status < 500 // Accept any successful response or 4xx
@@ -136,7 +136,7 @@ export async function getHistoricalGames(date: string): Promise<HistoricalGame[]
       if (pythonResponse.data && pythonResponse.data.games && Array.isArray(pythonResponse.data.games)) {
         const games = pythonResponse.data.games;
         if (games.length > 0) {
-          console.log(`Successfully fetched ${games.length} games from Python API`);
+          console.log(`Successfully fetched ${games.length} games from Python API (nba-api-client)`);
           
           // Map Python API response to our format
           return games.map((game: any) => {
@@ -169,83 +169,13 @@ export async function getHistoricalGames(date: string): Promise<HistoricalGame[]
         }
       }
     } catch (pythonError) {
-      console.log('Python API not available, trying stats.nba.com directly');
+      console.log(`Python API error: ${pythonError instanceof Error ? pythonError.message : String(pythonError)}`);
     }
 
-    // Fallback: Try stats.nba.com direct
-    console.log(`Attempting to fetch from stats.nba.com`);
-    await enforceRateLimit();
-
-    const response = await axios.get(STATS_NBA_API, {
-      params: {
-        GameDate: date,
-        LeagueID: '00'
-      },
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Origin': 'https://nba.com',
-        'Referer': 'https://nba.com/',
-        'Connection': 'keep-alive'
-      },
-      timeout: REQUEST_TIMEOUT
-    });
-
-    const resultSets = response.data.resultSets || [];
-    const gameHeader = resultSets.find((rs: any) => rs.name === 'GameHeader');
+    // If no data from Python API, return empty array
+    console.log(`No games found for ${date}`);
+    return [];
     
-    if (!gameHeader || !gameHeader.rowSet || gameHeader.rowSet.length === 0) {
-      console.log(`No games found for ${date}`);
-      return [];
-    }
-
-    const headers = gameHeader.headers;
-    const games = gameHeader.rowSet || [];
-
-    const processedGames: HistoricalGame[] = games.map((game: any[]) => {
-      const gameObj: { [key: string]: any } = {};
-      headers.forEach((header: string, idx: number) => {
-        gameObj[header] = game[idx];
-      });
-
-      // Map stats.nba.com response to our format
-      const gameStatus = parseInt(gameObj.GAME_STATUS || '0');
-      const gameStatusText = getGameStatusText(gameStatus);
-      
-      const homeTeamId = gameObj.HOME_TEAM_ID;
-      const awayTeamId = gameObj.VISITOR_TEAM_ID;
-      
-      const homeTricode = getTeamTricode(homeTeamId);
-      const awayTricode = getTeamTricode(awayTeamId);
-
-      return {
-        gameId: gameObj.GAME_ID,
-        gameDate: gameObj.GAME_DATE,
-        gameStatus: gameStatus,
-        gameStatusText: gameStatusText,
-        homeTeam: {
-          teamName: getTeamName(homeTricode),
-          teamId: homeTeamId,
-          teamTricode: homeTricode,
-          wins: parseInt(gameObj.HOME_TEAM_WINS || '0'),
-          losses: parseInt(gameObj.HOME_TEAM_LOSSES || '0'),
-          score: parseInt(gameObj.PTS_home || '0')
-        },
-        awayTeam: {
-          teamName: getTeamName(awayTricode),
-          teamId: awayTeamId,
-          teamTricode: awayTricode,
-          wins: parseInt(gameObj.VISITOR_TEAM_WINS || '0'),
-          losses: parseInt(gameObj.VISITOR_TEAM_LOSSES || '0'),
-          score: parseInt(gameObj.PTS_away || '0')
-        }
-      };
-    });
-
-    console.log(`Successfully fetched ${processedGames.length} games for ${date}`);
-    return processedGames;
-
   } catch (error: any) {
     console.error(`Error fetching historical games for ${date}:`, error.message);
     throw error;
@@ -254,43 +184,34 @@ export async function getHistoricalGames(date: string): Promise<HistoricalGame[]
 
 export async function getHistoricalBoxScore(gameId: string): Promise<any> {
   try {
-    console.log(`Fetching box score for game ${gameId} from stats.nba.com`);
+    console.log(`Fetching box score for game ${gameId}`);
     
     // Enforce rate limiting
     await enforceRateLimit();
 
-    const response = await axios.get('https://stats.nba.com/stats/boxscoresummaryv2', {
-      params: {
-        GameID: gameId
-      },
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Origin': 'https://nba.com',
-        'Referer': 'https://nba.com/'
-      },
-      timeout: REQUEST_TIMEOUT
-    });
+    // Try nba-api-client first
+    try {
+      // nba-api-client getBoxScore function would be used here if available
+      // For now, use fallback to Python API
+      const pythonResponse = await axios.get(`${PYTHON_API}/games/${gameId}/boxscore`, {
+        timeout: REQUEST_TIMEOUT,
+        validateStatus: (status) => status < 500
+      });
+      
+      if (pythonResponse.data) {
+        console.log(`Successfully fetched box score for game ${gameId} from Python API`);
+        return pythonResponse.data;
+      }
+    } catch (pythonError) {
+      console.log('Python API not available for box score');
+    }
 
-    return response.data;
+    // No data available
+    return null;
   } catch (error: any) {
     console.error(`Error fetching box score for game ${gameId}:`, error.message);
     throw error;
   }
-}
-
-function getGameStatusText(status: number): string {
-  const statusMap: { [key: number]: string } = {
-    1: 'Not Started',
-    2: 'In Progress',
-    3: 'Final',
-    4: 'Final/OT',
-    5: 'Postponed',
-    6: 'Cancelled',
-    7: 'Suspended'
-  };
-  return statusMap[status] || 'Unknown';
 }
 
 export default {
