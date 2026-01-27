@@ -5,8 +5,13 @@ export class ScoreboardWebSocketManager {
   private activeConnections: Set<WebSocket> = new Set();
   private broadcastInterval: NodeJS.Timeout | null = null;
   private cleanupInterval: NodeJS.Timeout | null = null;
-  private readonly BROADCAST_INTERVAL = 8000; // 8 seconds - match scoreboard poll interval
-  private readonly CLEANUP_INTERVAL = 30000; // 30 seconds - clean up dead connections
+  private currentGames: any[] = [];
+  private lastUpdateTimestamp: Map<string, number> = new Map();
+  private lastWinProbUpdate: number = 0;
+  private readonly BROADCAST_INTERVAL = 2000; // 2 seconds - check for changes frequently
+  private readonly CLEANUP_INTERVAL = 600000; // 10 minutes - clean up stale timestamps
+  private readonly MIN_UPDATE_INTERVAL = 5000; // Minimum 5 seconds between updates per game
+  private readonly CLEANUP_THRESHOLD = 3600000; // 1 hour - remove stale timestamps older than this
 
   connect(websocket: WebSocket): void {
     this.activeConnections.add(websocket);
@@ -30,11 +35,7 @@ export class ScoreboardWebSocketManager {
     try {
       const scoreboardData = await dataCache.getScoreboard();
       if (scoreboardData && websocket.readyState === WebSocket.OPEN) {
-        websocket.send(JSON.stringify({
-          type: 'scoreboard',
-          timestamp: new Date().toISOString(),
-          data: scoreboardData
-        }));
+        websocket.send(JSON.stringify(scoreboardData));
       }
     } catch (error) {
       console.error('[Scoreboard WS] Error sending initial data:', error);
@@ -44,38 +45,87 @@ export class ScoreboardWebSocketManager {
   disconnect(websocket: WebSocket): void {
     this.activeConnections.delete(websocket);
     console.log(`[Scoreboard WS] Client disconnected (remaining: ${this.activeConnections.size})`);
+    
+    // Clear timestamps if no more connections
+    if (this.activeConnections.size === 0) {
+      this.lastUpdateTimestamp.clear();
+    }
   }
 
   handleConnection(websocket: WebSocket): void {
     this.connect(websocket);
   }
 
-  async broadcast(data: any): Promise<void> {
-    if (this.activeConnections.size === 0) return;
+  private hasGameDataChanged(newGames: any[], oldGames: any[]): boolean {
+    const currentTime = Date.now();
+    const newMap = new Map(newGames.map(g => [g.gameId, g]));
+    const oldMap = new Map(oldGames.map(g => [g.gameId, g]));
 
-    const message = JSON.stringify({
-      type: 'scoreboard',
-      timestamp: new Date().toISOString(),
-      data: data
-    });
+    for (const [gameId, newGame] of newMap) {
+      if (!oldMap.has(gameId)) {
+        return true;
+      }
 
-    const disconnectedClients: WebSocket[] = [];
+      const oldGame = oldMap.get(gameId)!;
+      const lastUpdate = this.lastUpdateTimestamp.get(gameId) || 0;
 
-    for (const client of this.activeConnections) {
-      try {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(message);
-        } else {
-          disconnectedClients.push(client);
+      // Check if scores, status, or period changed
+      const homeScoreChanged = newGame.homeTeam?.score !== oldGame.homeTeam?.score;
+      const awayScoreChanged = newGame.awayTeam?.score !== oldGame.awayTeam?.score;
+      const statusChanged = newGame.gameStatus !== oldGame.gameStatus;
+      const periodChanged = newGame.period !== oldGame.period;
+
+      if (homeScoreChanged || awayScoreChanged || statusChanged || periodChanged) {
+        // Only update if minimum interval has passed
+        if (currentTime - lastUpdate >= this.MIN_UPDATE_INTERVAL) {
+          this.lastUpdateTimestamp.set(gameId, currentTime);
+          return true;
         }
-      } catch (error) {
-        console.error('[Scoreboard WS] Error sending to client:', error);
-        disconnectedClients.push(client);
       }
     }
 
-    // Clean up disconnected clients
-    disconnectedClients.forEach(client => this.activeConnections.delete(client));
+    return false;
+  }
+
+  async broadcastUpdates(): Promise<void> {
+    if (this.activeConnections.size === 0) return;
+
+    try {
+      const scoreboardData = await dataCache.getScoreboard();
+
+      if (!scoreboardData) return;
+
+      const newGames = scoreboardData.scoreboard?.games || [];
+
+      // Check if games have changed
+      if (!this.hasGameDataChanged(newGames, this.currentGames)) {
+        return;
+      }
+
+      this.currentGames = newGames;
+
+      console.log(`[Scoreboard WS] Broadcasting updates for ${newGames.length} games`);
+
+      const disconnectedClients: WebSocket[] = [];
+
+      for (const client of this.activeConnections) {
+        try {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(scoreboardData));
+          } else {
+            disconnectedClients.push(client);
+          }
+        } catch (error) {
+          console.error('[Scoreboard WS] Error sending to client:', error);
+          disconnectedClients.push(client);
+        }
+      }
+
+      // Clean up disconnected clients
+      disconnectedClients.forEach(client => this.activeConnections.delete(client));
+    } catch (error) {
+      console.error('[Scoreboard WS] Error in broadcast:', error);
+    }
   }
 
   startBroadcasting(): void {
@@ -84,20 +134,10 @@ export class ScoreboardWebSocketManager {
     console.log('[Scoreboard WS] Broadcasting started');
 
     const broadcast = async () => {
-      try {
-        const scoreboardData = await dataCache.getScoreboard();
-        if (scoreboardData) {
-          await this.broadcast(scoreboardData);
-        }
-      } catch (error) {
-        console.error('[Scoreboard WS] Error in broadcast loop:', error);
-      }
+      await this.broadcastUpdates();
     };
 
-    // Initial broadcast
-    broadcast();
-
-    // Set up periodic broadcasting
+    // Set up periodic check for changes
     this.broadcastInterval = setInterval(broadcast, this.BROADCAST_INTERVAL);
   }
 
@@ -107,6 +147,7 @@ export class ScoreboardWebSocketManager {
     console.log('[Scoreboard WS] Cleanup task started');
 
     const cleanup = () => {
+      // Remove dead connections
       const deadConnections: WebSocket[] = [];
 
       for (const client of this.activeConnections) {
@@ -117,8 +158,23 @@ export class ScoreboardWebSocketManager {
 
       deadConnections.forEach(client => {
         this.activeConnections.delete(client);
-        console.log(`[Scoreboard WS] Cleaned up dead connection (remaining: ${this.activeConnections.size})`);
       });
+
+      // Clean up stale timestamps
+      const currentTime = Date.now();
+      const staleKeys: string[] = [];
+
+      for (const [gameId, timestamp] of this.lastUpdateTimestamp) {
+        if (currentTime - timestamp > this.CLEANUP_THRESHOLD) {
+          staleKeys.push(gameId);
+        }
+      }
+
+      staleKeys.forEach(key => this.lastUpdateTimestamp.delete(key));
+
+      if (deadConnections.length > 0 || staleKeys.length > 0) {
+        console.log(`[Scoreboard WS] Cleanup: removed ${deadConnections.length} dead connections, ${staleKeys.length} stale timestamps`);
+      }
     };
 
     this.cleanupInterval = setInterval(cleanup, this.CLEANUP_INTERVAL);
@@ -147,8 +203,12 @@ export class PlaybyplayWebSocketManager {
   private activeConnections: Map<string, Set<WebSocket>> = new Map();
   private broadcastIntervals: Map<string, NodeJS.Timeout> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
-  private readonly BROADCAST_INTERVAL = 5000; // 5 seconds - match play-by-play poll interval
-  private readonly CLEANUP_INTERVAL = 30000; // 30 seconds - clean up dead connections
+  private currentPlaybyplay: Map<string, any[]> = new Map();
+  private lastUpdateTimestamp: Map<string, number> = new Map();
+  private readonly BROADCAST_INTERVAL = 2000; // 2 seconds - check for new plays frequently
+  private readonly CLEANUP_INTERVAL = 600000; // 10 minutes - clean up stale data
+  private readonly MIN_UPDATE_INTERVAL = 2000; // Minimum 2 seconds between updates per game
+  private readonly CLEANUP_THRESHOLD = 3600000; // 1 hour - remove stale timestamps older than this
 
   connect(gameId: string, websocket: WebSocket): void {
     if (!this.activeConnections.has(gameId)) {
@@ -179,12 +239,7 @@ export class PlaybyplayWebSocketManager {
     try {
       const playbyplayData = await dataCache.getPlaybyplay(gameId);
       if (playbyplayData && websocket.readyState === WebSocket.OPEN) {
-        websocket.send(JSON.stringify({
-          type: 'playbyplay',
-          gameId: gameId,
-          timestamp: new Date().toISOString(),
-          data: playbyplayData
-        }));
+        websocket.send(JSON.stringify(playbyplayData));
       }
     } catch (error) {
       console.error(`[PlayByPlay WS] Error sending initial data for game ${gameId}:`, error);
@@ -206,6 +261,9 @@ export class PlaybyplayWebSocketManager {
           this.broadcastIntervals.delete(gameId);
           console.log(`[PlayByPlay WS] Stopped broadcasting for game ${gameId}`);
         }
+        // Clean up data for this game
+        this.currentPlaybyplay.delete(gameId);
+        this.lastUpdateTimestamp.delete(gameId);
       }
     }
   }
@@ -214,44 +272,82 @@ export class PlaybyplayWebSocketManager {
     this.connect(gameId, websocket);
   }
 
-  async broadcast(gameId: string, data: any): Promise<void> {
-    const gameConnections = this.activeConnections.get(gameId);
-    if (!gameConnections || gameConnections.size === 0) return;
+  private hasPlaybyplayChanged(newPlays: any[], oldPlays: any[]): boolean {
+    const currentTime = Date.now();
+    const lastUpdate = this.lastUpdateTimestamp.get('playbyplay') || 0;
 
-    const message = JSON.stringify({
-      type: 'playbyplay',
-      gameId: gameId,
-      timestamp: new Date().toISOString(),
-      data: data
-    });
+    // Check if action numbers match (indicates new plays)
+    const newActionNumbers = new Set(newPlays.map(p => p.actionNumber));
+    const oldActionNumbers = new Set(oldPlays.map(p => p.actionNumber));
 
-    const disconnectedClients: WebSocket[] = [];
-
-    for (const client of gameConnections) {
-      try {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(message);
-        } else {
-          disconnectedClients.push(client);
-        }
-      } catch (error) {
-        console.error(`[PlayByPlay WS] Error sending to client for game ${gameId}:`, error);
-        disconnectedClients.push(client);
+    if (newActionNumbers.size !== oldActionNumbers.size) {
+      // New plays detected - check rate limit
+      if (currentTime - lastUpdate >= this.MIN_UPDATE_INTERVAL) {
+        this.lastUpdateTimestamp.set('playbyplay', currentTime);
+        return true;
       }
     }
 
-    // Clean up disconnected clients
-    disconnectedClients.forEach(client => {
-      gameConnections.delete(client);
-    });
+    return false;
+  }
 
-    if (gameConnections.size === 0) {
-      this.activeConnections.delete(gameId);
-      const interval = this.broadcastIntervals.get(gameId);
-      if (interval) {
-        clearInterval(interval);
-        this.broadcastIntervals.delete(gameId);
+  private async broadcastPlaybyplayUpdates(gameId: string): Promise<void> {
+    try {
+      const gameConnections = this.activeConnections.get(gameId);
+      if (!gameConnections || gameConnections.size === 0) {
+        return;
       }
+
+      const playbyplayData = await dataCache.getPlaybyplay(gameId);
+
+      if (!playbyplayData) {
+        return;
+      }
+
+      const newPlays = playbyplayData.plays || [];
+      const oldPlays = this.currentPlaybyplay.get(gameId) || [];
+
+      // Check if plays have changed
+      if (!this.hasPlaybyplayChanged(newPlays, oldPlays)) {
+        return;
+      }
+
+      this.currentPlaybyplay.set(gameId, newPlays);
+
+      console.log(`[PlayByPlay WS] Broadcasting ${newPlays.length} plays for game ${gameId}`);
+
+      const disconnectedClients: WebSocket[] = [];
+
+      for (const client of gameConnections) {
+        try {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(playbyplayData));
+          } else {
+            disconnectedClients.push(client);
+          }
+        } catch (error) {
+          console.error(`[PlayByPlay WS] Error sending to client for game ${gameId}:`, error);
+          disconnectedClients.push(client);
+        }
+      }
+
+      // Clean up disconnected clients
+      disconnectedClients.forEach(client => {
+        gameConnections.delete(client);
+      });
+
+      if (gameConnections.size === 0) {
+        this.activeConnections.delete(gameId);
+        const interval = this.broadcastIntervals.get(gameId);
+        if (interval) {
+          clearInterval(interval);
+          this.broadcastIntervals.delete(gameId);
+        }
+        this.currentPlaybyplay.delete(gameId);
+        this.lastUpdateTimestamp.delete(gameId);
+      }
+    } catch (error) {
+      console.error(`[PlayByPlay WS] Error in broadcast for game ${gameId}:`, error);
     }
   }
 
@@ -259,20 +355,10 @@ export class PlaybyplayWebSocketManager {
     if (this.broadcastIntervals.has(gameId)) return;
 
     const broadcast = async () => {
-      try {
-        const playbyplayData = await dataCache.getPlaybyplay(gameId);
-        if (playbyplayData) {
-          await this.broadcast(gameId, playbyplayData);
-        }
-      } catch (error) {
-        console.error(`[PlayByPlay WS] Error in broadcast loop for game ${gameId}:`, error);
-      }
+      await this.broadcastPlaybyplayUpdates(gameId);
     };
 
-    // Initial broadcast
-    broadcast();
-
-    // Set up periodic broadcasting
+    // Set up periodic check for new plays
     const interval = setInterval(broadcast, this.BROADCAST_INTERVAL);
     this.broadcastIntervals.set(gameId, interval);
   }
@@ -288,6 +374,7 @@ export class PlaybyplayWebSocketManager {
 
     const cleanup = () => {
       let deadConnectionsCount = 0;
+      const gamesToRemove: string[] = [];
 
       for (const [gameId, connections] of this.activeConnections.entries()) {
         const deadConnections: WebSocket[] = [];
@@ -305,17 +392,36 @@ export class PlaybyplayWebSocketManager {
 
         // Remove game if no more connections
         if (connections.size === 0) {
-          this.activeConnections.delete(gameId);
-          const interval = this.broadcastIntervals.get(gameId);
-          if (interval) {
-            clearInterval(interval);
-            this.broadcastIntervals.delete(gameId);
-          }
+          gamesToRemove.push(gameId);
         }
       }
 
-      if (deadConnectionsCount > 0) {
-        console.log(`[PlayByPlay WS] Cleaned up ${deadConnectionsCount} dead connections`);
+      // Clean up games with no connections
+      gamesToRemove.forEach(gameId => {
+        this.activeConnections.delete(gameId);
+        const interval = this.broadcastIntervals.get(gameId);
+        if (interval) {
+          clearInterval(interval);
+          this.broadcastIntervals.delete(gameId);
+        }
+        this.currentPlaybyplay.delete(gameId);
+        this.lastUpdateTimestamp.delete(gameId);
+      });
+
+      // Clean up stale timestamps
+      const currentTime = Date.now();
+      const staleKeys: string[] = [];
+
+      for (const [key, timestamp] of this.lastUpdateTimestamp) {
+        if (currentTime - timestamp > this.CLEANUP_THRESHOLD) {
+          staleKeys.push(key);
+        }
+      }
+
+      staleKeys.forEach(key => this.lastUpdateTimestamp.delete(key));
+
+      if (deadConnectionsCount > 0 || gamesToRemove.length > 0 || staleKeys.length > 0) {
+        console.log(`[PlayByPlay WS] Cleanup: removed ${deadConnectionsCount} dead connections, ${gamesToRemove.length} inactive games, ${staleKeys.length} stale timestamps`);
       }
     };
 
@@ -344,6 +450,8 @@ export class PlaybyplayWebSocketManager {
       }
     }
     this.activeConnections.clear();
+    this.currentPlaybyplay.clear();
+    this.lastUpdateTimestamp.clear();
 
     console.log('[PlayByPlay WS] All connections closed');
   }
