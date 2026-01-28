@@ -5,9 +5,9 @@ console.log('=' . repeat(50));
 
 // Test 1: Scoreboard WebSocket
 console.log('\nTest 1: Scoreboard WebSocket');
-console.log('URL: ws://localhost:8000/api/v1/ws\n');
+console.log('URL: ws://127.0.0.1:8000/api/v1/ws\n');
 
-const ws1 = new WebSocket('ws://localhost:8000/api/v1/ws');
+const ws1 = new WebSocket('ws://127.0.0.1:8000/api/v1/ws');
 let scoreboardReceived = false;
 
 ws1.on('open', () => {
@@ -55,9 +55,9 @@ ws1.on('close', (code, reason) => {
   setTimeout(() => {
     console.log('\n' + '='.repeat(50));
     console.log('\nTest 2: Playbyplay WebSocket');
-    console.log('URL: ws://localhost:8000/api/v1/playbyplay/ws/0022500664\n');
+    console.log('URL: ws://127.0.0.1:8000/api/v1/playbyplay/ws/0022500664\n');
     
-    const ws2 = new WebSocket('ws://localhost:8000/api/v1/playbyplay/ws/0022500664');
+    const ws2 = new WebSocket('ws://127.0.0.1:8000/api/v1/playbyplay/ws/0022500664');
     let playbyplayReceived = false;
 
     ws2.on('open', () => {

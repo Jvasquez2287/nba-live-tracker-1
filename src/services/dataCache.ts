@@ -1,5 +1,6 @@
 import { getScoreboard, getPlayByPlay } from './scoreboard';
 import { ScoreboardResponse, PlayByPlayResponse } from '../types';
+import { playbyplayWebSocketManager } from './websocketManager';
 
 class LRUCache {
   private cache = new Map<string, PlayByPlayResponse>();
@@ -93,7 +94,7 @@ export class DataCache {
     // Force a fresh fetch from NBA API
     try {
       const scoreboardData = await getScoreboard();
-      
+
       this.lock = true;
       try {
         this.scoreboardCache = scoreboardData;
@@ -101,7 +102,7 @@ export class DataCache {
       } finally {
         this.lock = false;
       }
-      
+
       return scoreboardData;
     } catch (error) {
       console.error('Error refreshing scoreboard:', error);
@@ -249,7 +250,9 @@ export class DataCache {
 
               if (currentGame && currentGame.gameStatus === 2) {
                 this.playbyplayCache.set(gameId, playbyplayData);
-                console.log(`Play-by-play cache updated for game ${gameId}`); 
+                console.log(`Play-by-play cache updated for game ${gameId}`);
+                // Broadcast custom data to all connected clients
+                await playbyplayWebSocketManager.broadcastToAllClients({playbyplayData, gameId});
               }
             } finally {
               this.lock = false;

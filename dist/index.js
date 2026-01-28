@@ -134,6 +134,10 @@ wss.on("connection", (ws, req) => {
         if (url === "/api/v1/ws" || url?.includes("api/v1/ws")) {
             console.log('[WebSocket] ✅ Routing to scoreboard WebSocket manager');
             websocketManager_1.scoreboardWebSocketManager.handleConnection(ws);
+            // Also send all playbyplay data
+            websocketManager_1.playbyplayWebSocketManager.sendAllPlaybyplayData(ws).catch(err => {
+                console.error('[WebSocket] Error sending playbyplay data:', err);
+            });
         }
         else if (url?.startsWith("/api/v1/playbyplay/ws/")) {
             const gameId = url.split("/").pop();

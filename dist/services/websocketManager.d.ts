@@ -44,6 +44,8 @@ export declare class PlaybyplayWebSocketManager {
     stopCleanupTask(): void;
     getConnectionCount(gameId?: string): number;
     getGameCount(): number;
+    sendAllPlaybyplayData(websocket: WebSocket): Promise<void>;
+    broadcastToAllClients(data: any): Promise<number>;
 }
 export declare const scoreboardWebSocketManager: ScoreboardWebSocketManager;
 export declare const playbyplayWebSocketManager: PlaybyplayWebSocketManager;

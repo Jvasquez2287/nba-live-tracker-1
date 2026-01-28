@@ -493,6 +493,76 @@ class PlaybyplayWebSocketManager {
     getGameCount() {
         return this.activeConnections.size;
     }
+    async sendAllPlaybyplayData(websocket) {
+        try {
+            if (websocket.readyState !== ws_1.default.OPEN) {
+                return;
+            }
+            const allPlaybyplay = [];
+            const allGames = Array.from(this.activeConnections.keys());
+            for (const gameId of allGames) {
+                try {
+                    const playbyplayData = await dataCache_1.dataCache.getPlaybyplay(gameId);
+                    if (playbyplayData && playbyplayData.plays) {
+                        allPlaybyplay.push({
+                            gameId,
+                            plays: playbyplayData.plays
+                        });
+                    }
+                }
+                catch (error) {
+                    console.error(`[PlayByPlay WS] Error fetching data for game ${gameId}:`, error);
+                }
+            }
+            // Send all playbyplay data as a single message
+            websocket.send(JSON.stringify({
+                allPlaybyplay,
+                gameCount: allGames.length,
+                timestamp: new Date().toISOString()
+            }));
+            console.log(`[PlayByPlay WS] Sent playbyplay data for ${allGames.length} games to client`);
+        }
+        catch (error) {
+            console.error('[PlayByPlay WS] Error sending all playbyplay data:', error);
+        }
+    }
+    async broadcastToAllClients(data) {
+        try {
+            let clientCount = 0;
+            const disconnectedClients = [];
+            // Iterate through all games and their connected clients
+            for (const [gameId, connections] of this.activeConnections.entries()) {
+                for (const client of connections) {
+                    try {
+                        if (client.readyState === ws_1.default.OPEN) {
+                            client.send(JSON.stringify(data));
+                            clientCount++;
+                        }
+                        else {
+                            disconnectedClients.push({ gameId, client });
+                        }
+                    }
+                    catch (error) {
+                        console.error(`[PlayByPlay WS] Error sending to client in game ${gameId}:`, error);
+                        disconnectedClients.push({ gameId, client });
+                    }
+                }
+            }
+            // Clean up disconnected clients
+            disconnectedClients.forEach(({ gameId, client }) => {
+                const connections = this.activeConnections.get(gameId);
+                if (connections) {
+                    connections.delete(client);
+                }
+            });
+            console.log(`[PlayByPlay WS] Broadcast sent to ${clientCount} clients`);
+            return clientCount;
+        }
+        catch (error) {
+            console.error('[PlayByPlay WS] Error in broadcastToAllClients:', error);
+            return 0;
+        }
+    }
 }
 exports.PlaybyplayWebSocketManager = PlaybyplayWebSocketManager;
 exports.scoreboardWebSocketManager = new ScoreboardWebSocketManager();

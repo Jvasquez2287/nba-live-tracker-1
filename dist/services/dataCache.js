@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.dataCache = exports.DataCache = void 0;
 const scoreboard_1 = require("./scoreboard");
+const websocketManager_1 = require("./websocketManager");
 class LRUCache {
     constructor(maxSize) {
         this.cache = new Map();
@@ -216,6 +217,8 @@ class DataCache {
                             if (currentGame && currentGame.gameStatus === 2) {
                                 this.playbyplayCache.set(gameId, playbyplayData);
                                 console.log(`Play-by-play cache updated for game ${gameId}`);
+                                // Broadcast custom data to all connected clients
+                                await websocketManager_1.playbyplayWebSocketManager.broadcastToAllClients({ playbyplayData, gameId });
                             }
                         }
                         finally {
