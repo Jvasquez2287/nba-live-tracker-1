@@ -78,6 +78,7 @@ app.get("/api/v1/cache/status", async (req, res) => {
     }
 });
 // Routes
+const schedule_http_1 = __importDefault(require("./routes/schedule_http"));
 const schedule_1 = __importDefault(require("./routes/schedule"));
 const standings_1 = __importDefault(require("./routes/standings"));
 const players_1 = __importDefault(require("./routes/players"));
@@ -86,6 +87,7 @@ const search_1 = __importDefault(require("./routes/search"));
 const predictions_1 = __importDefault(require("./routes/predictions"));
 const league_1 = __importDefault(require("./routes/league"));
 const scoreboard_1 = __importDefault(require("./routes/scoreboard"));
+app.use("/api/v1", schedule_http_1.default);
 app.use("/api/v1", schedule_1.default);
 app.use("/api/v1", standings_1.default);
 app.use("/api/v1", teams_1.default);

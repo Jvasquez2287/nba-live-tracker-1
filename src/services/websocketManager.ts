@@ -1,5 +1,7 @@
 import WebSocket from 'ws';
 import { dataCache } from './dataCache';
+import { schedule } from 'node-cron';
+import { scheduleService } from './schedule';
 
 export class ScoreboardWebSocketManager {
   private activeConnections: Set<WebSocket> = new Set();
@@ -48,19 +50,34 @@ export class ScoreboardWebSocketManager {
         const allGames = scoreboardData.scoreboard?.games || [];
         const liveGames = allGames.filter((g: any) => g.gameStatus === 2);
 
-        // If no live games, use upcoming games (gameStatus === 1)
-        let gamesToSend = liveGames.length > 0 ? liveGames : allGames.filter((g: any) => g.gameStatus === 1);
+        console.log(`\n=========================================================`);
+        console.log(`[Scoreboard WS] Total games available: ${allGames.length}`);
+        console.log(`=========================================================\n`);
 
+        // If no live games, use upcoming games (gameStatus === 1)
+        let gamesToSend = liveGames.length > 0 ? liveGames : allGames.filter((g: any) => {
+          console.log(`\n=========================================================`);
+          console.log(`[Scoreboard WS] ${g.gameId} status: ${g.gameStatus}`);
+          console.log(`=========================================================\n`);
+          return g.gameStatus === 1;
+        });
+
+        console.log(`[Scoreboard WS] Preparing to send initial data: ${gamesToSend.length} games (${liveGames.length > 0 ? 'live' : 'upcoming'})`);
         // Format games to match response schema
-        const formattedGames = this.formatGameResponse(gamesToSend);
+        const formattedGames = this.formatGameResponse(gamesToSend) || [];
 
         // Send the filtered scoreboard data
-        const responseData = {
-          scoreboard: {
-            gameDate: scoreboardData.scoreboard?.gameDate || '',
-            games: formattedGames
+        const responseData = formattedGames.length === 0 ?
+          {
+            scoreboard: await scheduleService.getTodaysSchedule() || { gameDate: '', games: [] }
           }
-        };
+          :
+          {
+            scoreboard: {
+              gameDate: scoreboardData.scoreboard?.gameDate || '',
+              games: formattedGames
+            }
+          };
 
         console.log(`[Scoreboard WS] Sending initial data: ${formattedGames.length} games`);
         websocket.send(JSON.stringify(responseData));
@@ -84,7 +101,7 @@ export class ScoreboardWebSocketManager {
   disconnect(websocket: WebSocket): void {
     this.activeConnections.delete(websocket);
     console.log(`[Scoreboard WS] Client disconnected (remaining: ${this.activeConnections.size})`);
-    
+
     // Clear timestamps if no more connections
     if (this.activeConnections.size === 0) {
       this.lastUpdateTimestamp.clear();
@@ -167,10 +184,10 @@ export class ScoreboardWebSocketManager {
       if (!scoreboardData) return;
 
       const allGames = scoreboardData.scoreboard?.games || [];
-      
+
       // Filter for live games first (gameStatus === 2)
       const liveGames = allGames.filter((g: any) => g.gameStatus === 2);
-      
+
       // If no live games, use upcoming games (gameStatus === 1)
       const gamesToSend = liveGames.length > 0 ? liveGames : allGames.filter((g: any) => g.gameStatus === 1);
 
@@ -609,7 +626,7 @@ export class PlaybyplayWebSocketManager {
   async broadcastToAllClients(data: any): Promise<number> {
     try {
       let clientCount = 0;
-      const disconnectedClients: Array<{gameId: string, client: WebSocket}> = [];
+      const disconnectedClients: Array<{ gameId: string, client: WebSocket }> = [];
 
       // Iterate through all games and their connected clients
       for (const [gameId, connections] of this.activeConnections.entries()) {
@@ -619,17 +636,17 @@ export class PlaybyplayWebSocketManager {
               client.send(JSON.stringify(data));
               clientCount++;
             } else {
-              disconnectedClients.push({gameId, client});
+              disconnectedClients.push({ gameId, client });
             }
           } catch (error) {
             console.error(`[PlayByPlay WS] Error sending to client in game ${gameId}:`, error);
-            disconnectedClients.push({gameId, client});
+            disconnectedClients.push({ gameId, client });
           }
         }
       }
 
       // Clean up disconnected clients
-      disconnectedClients.forEach(({gameId, client}) => {
+      disconnectedClients.forEach(({ gameId, client }) => {
         const connections = this.activeConnections.get(gameId);
         if (connections) {
           connections.delete(client);

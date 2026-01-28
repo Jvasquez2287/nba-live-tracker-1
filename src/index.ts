@@ -84,6 +84,7 @@ app.get("/api/v1/cache/status", async (req, res) => {
 });
 
 // Routes
+import schedulev1Routes from "./routes/schedule_http";
 import scheduleRoutes from "./routes/schedule";
 import standingsRoutes from "./routes/standings";
 import playerRoutes from "./routes/players";
@@ -93,6 +94,7 @@ import predictionsRoutes from "./routes/predictions";
 import leagueRoutes from "./routes/league";
 import scoreboardRoutes from "./routes/scoreboard";
 
+app.use("/api/v1", schedulev1Routes);
 app.use("/api/v1", scheduleRoutes);
 app.use("/api/v1", standingsRoutes);
 app.use("/api/v1", teamRoutes);

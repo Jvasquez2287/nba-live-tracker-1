@@ -199,7 +199,7 @@ export class DataCache {
               console.log(`Immediately cleaned up ${finishedGames.length} finished games from play-by-play cache`);
             }
           }
-
+ 
           console.log(`Scoreboard cache updated: ${scoreboardData?.scoreboard?.games?.length || 0} games`);
         } finally {
           this.lock = false;

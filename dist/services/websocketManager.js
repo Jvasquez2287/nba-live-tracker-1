@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.playbyplayWebSocketManager = exports.scoreboardWebSocketManager = exports.PlaybyplayWebSocketManager = exports.ScoreboardWebSocketManager = void 0;
 const ws_1 = __importDefault(require("ws"));
 const dataCache_1 = require("./dataCache");
+const schedule_1 = require("./schedule");
 class ScoreboardWebSocketManager {
     constructor() {
         this.activeConnections = new Set();
@@ -47,17 +48,31 @@ class ScoreboardWebSocketManager {
                 // Filter for live games first (gameStatus === 2)
                 const allGames = scoreboardData.scoreboard?.games || [];
                 const liveGames = allGames.filter((g) => g.gameStatus === 2);
+                console.log(`\n=========================================================`);
+                console.log(`[Scoreboard WS] Total games available: ${allGames.length}`);
+                console.log(`=========================================================\n`);
                 // If no live games, use upcoming games (gameStatus === 1)
-                let gamesToSend = liveGames.length > 0 ? liveGames : allGames.filter((g) => g.gameStatus === 1);
+                let gamesToSend = liveGames.length > 0 ? liveGames : allGames.filter((g) => {
+                    console.log(`\n=========================================================`);
+                    console.log(`[Scoreboard WS] ${g.gameId} status: ${g.gameStatus}`);
+                    console.log(`=========================================================\n`);
+                    return g.gameStatus === 1;
+                });
+                console.log(`[Scoreboard WS] Preparing to send initial data: ${gamesToSend.length} games (${liveGames.length > 0 ? 'live' : 'upcoming'})`);
                 // Format games to match response schema
-                const formattedGames = this.formatGameResponse(gamesToSend);
+                const formattedGames = this.formatGameResponse(gamesToSend) || [];
                 // Send the filtered scoreboard data
-                const responseData = {
-                    scoreboard: {
-                        gameDate: scoreboardData.scoreboard?.gameDate || '',
-                        games: formattedGames
+                const responseData = formattedGames.length === 0 ?
+                    {
+                        scoreboard: await schedule_1.scheduleService.getTodaysSchedule() || { gameDate: '', games: [] }
                     }
-                };
+                    :
+                        {
+                            scoreboard: {
+                                gameDate: scoreboardData.scoreboard?.gameDate || '',
+                                games: formattedGames
+                            }
+                        };
                 console.log(`[Scoreboard WS] Sending initial data: ${formattedGames.length} games`);
                 websocket.send(JSON.stringify(responseData));
                 console.log('[Scoreboard WS] ✅ Initial data sent successfully');
