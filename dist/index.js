@@ -139,7 +139,7 @@ wss.on("connection", (ws, req) => {
             const gameId = url.split("/").pop();
             if (gameId) {
                 console.log(`[WebSocket] ✅ Routing to playbyplay for game ${gameId}`);
-                websocketManager_1.playbyplayWebSocketManager.handleConnection(gameId, ws);
+                websocketManager_1.playbyplayWebSocketManager.handleConnection(ws, gameId);
             }
             else {
                 console.log(`[WebSocket] ❌ No game ID found in URL: ${url}`);
@@ -219,8 +219,8 @@ else {
         console.log(`[Server] Client connected from ${socket.remoteAddress}:${socket.remotePort}`);
     });
     try {
-        console.log(`[Server] Attempting to listen on 10.0.0.200:${PORT}...`);
-        server.listen(PORT, '10.0.0.200', () => {
+        console.log(`[Server] Attempting to listen on 0.0.0.0:${PORT}...`);
+        server.listen(PORT, '0.0.0.0', () => {
             const addr = server.address();
             console.log(`[Server] ✅ Successfully listening on ${addr?.address}:${addr?.port}`);
             console.log(`[WebSocket] Ready to accept WebSocket connections`);

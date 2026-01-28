@@ -249,7 +249,7 @@ export class DataCache {
 
               if (currentGame && currentGame.gameStatus === 2) {
                 this.playbyplayCache.set(gameId, playbyplayData);
-                console.log(`Play-by-play cache updated for game ${gameId}`);
+                console.log(`Play-by-play cache updated for game ${gameId}`); 
               }
             } finally {
               this.lock = false;

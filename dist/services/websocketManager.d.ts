@@ -1,38 +1,49 @@
 import WebSocket from 'ws';
 export declare class ScoreboardWebSocketManager {
     private activeConnections;
-    private pythonWebSocketMap;
-    /**
-     * Handle incoming WebSocket connection from client
-     * Proxies to Python backend WebSocket at /api/v1/scoreboard/ws
-     */
-    handleConnection(clientWs: WebSocket): void;
-    /**
-     * Establish connection to Python backend WebSocket
-     * This maintains a tunnel from client -> TypeScript -> Python backend
-     */
-    private connectToPythonBackend;
-    disconnect(clientWs: WebSocket): void;
+    private broadcastInterval;
+    private cleanupInterval;
+    private currentGames;
+    private lastUpdateTimestamp;
+    private lastWinProbUpdate;
+    private readonly BROADCAST_INTERVAL;
+    private readonly CLEANUP_INTERVAL;
+    private readonly MIN_UPDATE_INTERVAL;
+    private readonly CLEANUP_THRESHOLD;
+    connect(websocket: WebSocket): void;
+    private sendInitialData;
+    disconnect(websocket: WebSocket): void;
+    handleConnection(websocket: WebSocket): void;
+    private formatGameResponse;
+    private hasGameDataChanged;
+    broadcastUpdates(): Promise<void>;
     startBroadcasting(): void;
     startCleanupTask(): void;
     stopCleanupTask(): void;
+    getConnectionCount(): number;
 }
 export declare class PlaybyplayWebSocketManager {
     private activeConnections;
-    private pythonWebSocketMap;
-    /**
-     * Handle incoming WebSocket connection for a specific game
-     * Proxies to Python backend WebSocket at /api/v1/scoreboard/playbyplay/ws/{gameId}
-     */
-    handleConnection(gameId: string, clientWs: WebSocket): void;
-    /**
-     * Establish connection to Python backend WebSocket for specific game
-     */
-    private connectToPythonBackend;
-    disconnect(gameId: string, clientWs: WebSocket): void;
+    private broadcastIntervals;
+    private cleanupInterval;
+    private currentPlaybyplay;
+    private lastUpdateTimestamp;
+    private readonly BROADCAST_INTERVAL;
+    private readonly CLEANUP_INTERVAL;
+    private readonly MIN_UPDATE_INTERVAL;
+    private readonly CLEANUP_THRESHOLD;
+    connect(gameId: string, websocket: WebSocket): void;
+    private sendInitialData;
+    disconnect(gameId: string, websocket: WebSocket): void;
+    handleConnection(websocket: WebSocket, gameId: string): void;
+    private hasPlaybyplayChanged;
+    private broadcastPlaybyplayUpdates;
+    private startGameBroadcasting;
     startBroadcasting(): void;
     startCleanupTask(): void;
     stopCleanupTask(): void;
+    getConnectionCount(gameId?: string): number;
+    getGameCount(): number;
 }
 export declare const scoreboardWebSocketManager: ScoreboardWebSocketManager;
 export declare const playbyplayWebSocketManager: PlaybyplayWebSocketManager;
