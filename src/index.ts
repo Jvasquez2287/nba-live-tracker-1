@@ -112,19 +112,60 @@ import { startCleanupTask, stopCleanupTask } from "./services/keyMoments";
 
 // Create HTTP server and WebSocket server
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ noServer: true });
+
+console.log('[WebSocket] Server initialized');
+
+// Handle WebSocket upgrade requests
+console.log('[Server Setup] Registering upgrade handler');
+server.on('upgrade', (req, socket, head) => {
+  console.log(`[WebSocket] ✅ Upgrade request received for: ${req.url}`);
+  
+  try {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      console.log(`[WebSocket] ✅ Upgrade successful for: ${req.url}`);
+      wss.emit('connection', ws, req);
+    });
+  } catch (error) {
+    console.error('[WebSocket] ❌ Error during upgrade:', error);
+    socket.destroy();
+  }
+});
+console.log('[Server Setup] Upgrade handler registered');
 
 // WebSocket connection handling
 wss.on("connection", (ws, req: any) => {
   const url = req.url;
+  
+  console.log(`[WebSocket] New connection - URL: "${url}"`);
+  
+  // Send immediate acknowledgement to all WebSocket connections
+  try {
+    ws.send(JSON.stringify({ status: 'connected', message: 'WebSocket connection established' }));
+    console.log('[WebSocket] ✅ Acknowledgement sent');
+  } catch (error) {
+    console.error('[WebSocket] ❌ Error sending acknowledgement:', error);
+  }
 
-  if (url === "/api/v1/ws") {
-    scoreboardWebSocketManager.handleConnection(ws);
-  } else if (url?.startsWith("/api/v1/playbyplay/ws/")) {
-    const gameId = url.split("/").pop();
-    if (gameId) {
-      playbyplayWebSocketManager.handleConnection(ws, gameId);
+  try {
+    if (url === "/api/v1/ws" || url?.includes("api/v1/ws")) {
+      console.log('[WebSocket] ✅ Routing to scoreboard WebSocket manager');
+      scoreboardWebSocketManager.handleConnection(ws);
+    } else if (url?.startsWith("/api/v1/playbyplay/ws/")) {
+      const gameId = url.split("/").pop();
+      if (gameId) {
+        console.log(`[WebSocket] ✅ Routing to playbyplay for game ${gameId}`);
+        playbyplayWebSocketManager.handleConnection(gameId, ws);
+      } else {
+        console.log(`[WebSocket] ❌ No game ID found in URL: ${url}`);
+        ws.close();
+      }
+    } else {
+      console.log(`[WebSocket] ⚠️ Unknown URL: "${url}"`);
+      // Don't close for unknown URLs, just log them
     }
+  } catch (error) {
+    console.error(`[WebSocket] ❌ Error handling connection:`, error);
   }
 });
 
@@ -162,18 +203,56 @@ if (!isIISNode) {
 }
 
 // Start server
-const PORT = process.env.PORT || 8000;
+const PORT = parseInt(process.env.PORT || '8000');
 
 if (isIISNode) {
   // IISNode provides PORT as a named pipe
-  server.listen(PORT, () => {
-    console.log('Server running under IISNode on pipe:', PORT);
+  server.listen(process.env.PORT || 8000, () => {
+    console.log('Server running under IISNode on pipe:', process.env.PORT);
   });
 } else {
   // Development mode
-  server.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  process.on('uncaughtException', (err) => {
+    console.error('[Uncaught Exception]:', err);
   });
+  
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Unhandled Rejection]:', reason);
+  });
+
+  server.on('error', (err: any) => {
+    console.error('[Server Error Event]:', err.message);
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use`);
+      process.exit(1);
+    }
+  });
+  
+  server.on('clientError', (err: any, socket: any) => {
+    console.error('[Client Error]:', err);
+    socket.end();
+  });
+  
+  server.on('connection', (socket: any) => {
+    console.log(`[Server] Client connected from ${socket.remoteAddress}:${socket.remotePort}`);
+  });
+  
+  try {
+    console.log(`[Server] Attempting to listen on 10.0.0.200:${PORT}...`);
+    server.listen(PORT, '10.0.0.200', () => {
+      const addr = server.address() as any;
+      console.log(`[Server] ✅ Successfully listening on ${addr?.address}:${addr?.port}`);
+      console.log(`[WebSocket] Ready to accept WebSocket connections`);
+    });
+  } catch (err) {
+    console.error(`[Server] Error calling listen():`, err);
+  }
+  
+  // Verify server is actually listening
+  setInterval(() => {
+    const addr = server.address() as any;
+    console.log(`[Server Check] Listening: ${server.listening}, Address: ${addr?.address}:${addr?.port}`);
+  }, 30000);
 }
 
 // Graceful shutdown
